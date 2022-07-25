@@ -1,3 +1,17 @@
+//use std::env;
+use std::process;
+
+use elevators::Config;
+
 fn main() {
-    println!("Hello rust!");
+    let config = Config {
+        n_elevators: 3,
+        n_floors: 4,
+    };
+
+    if let Err(e) = elevators::run(config) {
+        eprintln!("Critical error: {}", e);
+
+        process::exit(1);
+    }
 }
