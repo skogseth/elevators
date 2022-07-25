@@ -3,6 +3,8 @@
 use std::io;
 use std::thread;
 
+mod elevator;
+mod request;
 mod state_machine;
 
 pub struct Config {

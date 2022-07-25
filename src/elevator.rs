@@ -1,4 +1,4 @@
-use crate::state_machine::request::Request;
+use crate::request::Request;
 
 #[derive(Debug)]
 pub enum Direction {

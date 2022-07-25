@@ -1,28 +1,25 @@
 use std::io;
 
-mod elevator;
-mod request;
+mod event;
+mod state;
 
-use crate::state_machine::elevator::{Elevator, Direction};
-
-enum State {
-    Idle(Elevator),
-    Moving(Elevator, Direction),
-    Still(Elevator, Option<Direction>),
-}
+use crate::state_machine::{event::Event, state::State};
+use crate::elevator::Elevator;
 
 pub fn go(_thread: usize) -> Result<(), io::Error> {
-    let state = State::Idle(Elevator::new(0));
+    let event = Event::TimerTimedOut;
+    let _state = State::Idle(Elevator::new(0));
 
-    loop {
-        match state {
-            State::Idle(_elevator) => println!("Elevator idle"),//check requests
-            State::Moving(_elevator, dir) => println!("Elevator moving in direction {dir:?}"),
-            State::Still(_elevator, opt_dir) => {
-                match opt_dir {
-                    Some(dir) => println!("Elevator standing still, going in direction {dir:?}"),
-                    None => println!("Elevator standing still"),
-                }
+    loop { //replace loop with wait for event
+        match event {
+            Event::ButtonPress(_floor) => {
+                //add request for floor, and optionally change state
+            }
+            Event::ArriveAtFloor(_floor) => {
+                //add request for floor, and optionally change state
+            }
+            Event::TimerTimedOut => {
+                //shrug
             }
         }
 
