@@ -1,10 +1,16 @@
 #![allow(dead_code)]
 
-use std::error::Error;
+use std::io;
+use std::thread;
 
-mod elevator;
+mod state_machine;
 
-pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+pub struct Config {
+    pub n_elevators: usize,
+    pub n_floors: usize,
+}
+
+pub fn run(config: Config) -> Result<(), io::Error> {
     println!("Executing run function");
 
     let n = config.n_elevators;
@@ -12,27 +18,21 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
     println!("(n, m) = ({n}, {m})");
 
-    for i in 1..(n+1) {
-        thread::spawn(|| {
-            run_elevator(i);
+    let mut handles: Vec<thread::JoinHandle<_>> = Vec::with_capacity(n);
+
+    for i in 0..n {
+        let handle = thread::spawn(move || -> Result<(), io::Error> {
+            state_machine::go(i)
         });
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        let result = handle.join().expect("Thread panicked, caught by main!");
+        if let Err(e) = result {
+            return Err(e);
+        }
     }
 
     Ok(())
-}
-
-pub struct Config {
-    pub n_elevators: usize,
-    pub n_floors: usize,
-}
-
-enum Direction {
-    Up,
-    Down,
-}
-
-struct Elevator {
-    floor: usize,
-    dir: Direction,
-    requests: Vec<usize>,
 }
