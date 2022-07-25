@@ -7,8 +7,8 @@ pub enum Direction {
 }
 
 pub struct Elevator {
-    pub floor: usize,
-    pub requests: Vec<Request>,
+    floor: usize,
+    requests: Vec<Request>,
 }
 
 impl Elevator {
@@ -16,4 +16,10 @@ impl Elevator {
         let requests: Vec<Request> = Vec::new();
         Elevator {floor, requests}
     }
+
+    pub fn get_floor(&self) -> usize { self.floor }
+    pub fn set_floor(&mut self, floor: usize) { self.floor = floor }
+
+    pub fn pull_request(&mut self) -> Option<Request> { self.requests.pop() }
+    pub fn push_request(&mut self, request Request) { self.requests.pull() }
 }
