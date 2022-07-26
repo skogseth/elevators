@@ -1,9 +1,9 @@
-pub mod event;
-pub mod request;
-pub mod state;
+mod event;
+mod request;
+mod state;
 
-use crate::elevator::{request::Requests, state::State};
-//use crate::error::ElevatorError;
+use crate::elevator::{event::Event, request::Requests, state::State};
+use crate::error::ElevatorError;
 
 #[derive(Debug)]
 pub enum Direction {
@@ -56,4 +56,42 @@ impl Elevator {
         self.requests.internal[floor] || self.requests.external[floor]
     }
     */
+
+    pub fn state_machine(_thread_id: usize, n_floors: usize) -> Result<(), ElevatorError> {
+        let event = Event::TimerTimedOut;
+        let _elevator = Elevator::new(0, n_floors);
+    
+        loop { //replace loop with wait for event
+            match event {
+                Event::ButtonPress(_floor) => {
+                    //add request for floor, and optionally change state
+                }
+                Event::ArriveAtFloor(_floor) => {
+                    /*
+                    if elevator.state == State::Moving {
+                        if let Err(e) = elevator.change_floor() {
+                            return Err(io::Error::new(io::ErrorKind::Other, "Tried to change floor with no direction at new floor without moving"));
+                        }
+                        if elevator.check_for_request(floor) {
+                            elevator.state = State::Still;
+                        }
+                    } else {
+                        return Err(io::Error::new(io::ErrorKind::Other, "Arrived at new floor without moving"));
+                    }
+                    */
+                }
+                Event::TimerTimedOut => {
+                    // what to do
+                    //state.move(Direction::Up);
+                    //event = Event::ArriveAtFloor(1);
+                }
+            }
+    
+            break;
+        }
+    
+        Ok(())
+    }
 }
+
+
