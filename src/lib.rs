@@ -1,18 +1,19 @@
 #![allow(dead_code)]
 
-use std::io;
-use std::thread;
-
+mod error;
 mod elevator;
-mod request;
-mod state_machine;
+
+use crate::error::ElevatorError;
+use crate::elevator::{Elevator, event::Event};
+use std::error::Error;
+use std::thread;
 
 pub struct Config {
     pub n_elevators: usize,
     pub n_floors: usize,
 }
 
-pub fn run(config: Config) -> Result<(), io::Error> {
+pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     println!("Executing run function");
 
     let n = config.n_elevators;
@@ -23,18 +24,50 @@ pub fn run(config: Config) -> Result<(), io::Error> {
     let mut handles: Vec<thread::JoinHandle<_>> = Vec::with_capacity(n);
 
     for i in 0..n {
-        let handle = thread::spawn(move || -> Result<(), io::Error> {
-            state_machine::go(i)
+        let handle = thread::spawn(move || -> Result<(), ElevatorError> {
+            state_machine(i, n)
         });
         handles.push(handle);
     }
 
     for handle in handles {
-        let result = handle.join().expect("Thread panicked, caught by main!");
-        if let Err(e) = result {
-            return Err(e);
-        }
+        handle.join().expect("Thread panicked, caught by main!")?;
     }
+
+    Ok(())
+}
+
+pub fn state_machine(_thread_id: usize, n_floors: usize) -> Result<(), ElevatorError> {
+    let _event = Event::TimerTimedOut;
+    let _elevator = Elevator::new(0, n_floors);
+
+    /*
+    loop { //replace loop with wait for event
+        match event {
+            Event::ButtonPress(_floor) => {
+                //add request for floor, and optionally change state
+            }
+            Event::ArriveAtFloor(floor) => {
+                if elevator.state == State::Moving {
+                    if let Err(e) = elevator.change_floor() {
+                        return Err(io::Error::new(io::ErrorKind::Other, "Tried to change floor with no direction at new floor without moving"));
+                    }
+                    if elevator.check_for_request(floor) {
+                        elevator.state = State::Still;
+                    }
+                } else {
+                    return Err(io::Error::new(io::ErrorKind::Other, "Arrived at new floor without moving"));
+                }
+            }
+            Event::TimerTimedOut => {
+                state.move(Direction::Up);
+                event = Event::ArriveAtFloor(1);
+            }
+        }
+
+        break;
+    }
+    */
 
     Ok(())
 }
