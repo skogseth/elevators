@@ -4,7 +4,6 @@ mod error;
 mod elevator;
 
 use crate::error::ElevatorError;
-use crate::elevator::Elevator;
 
 use std::error::Error;
 use std::thread;
@@ -26,7 +25,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
     for i in 0..n {
         let handle = thread::spawn(move || -> Result<(), ElevatorError> {
-            Elevator::state_machine(i, n)
+            elevator::state_machine(i, n)
         });
         handles.push(handle);
     }
