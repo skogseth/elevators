@@ -3,7 +3,7 @@ pub mod event;
 pub mod request;
 pub mod state;
 
-use crate::elevator::{direction::Direction, event::Event, request::Requests, state::State};
+use crate::elevator::{direction::Direction, request::Requests, state::State};
 use crate::error::ElevatorError;
 
 pub struct Elevator {
@@ -58,6 +58,9 @@ impl Elevator {
     pub fn check_for_request(&self, floor: usize) -> bool {
         self.requests.internal[floor] || self.requests.external[floor]
     }
+
+    pub fn get_state(&self) -> State { self.state }
+    pub fn set_state(&mut self, state: State) { self.state = state }
 }
 
 impl std::fmt::Display for Elevator {
@@ -67,37 +70,4 @@ impl std::fmt::Display for Elevator {
             None => write!(f, "elevator on floor {} in state {} with no direction", self.floor, self.state),
         }
     }
-}
-
-pub fn state_machine(_thread_id: usize, n_floors: usize) -> Result<(), ElevatorError> {
-    let mut event = Event::TimerTimedOut;
-    let mut elevator = Elevator::new(0, n_floors);
-
-    loop { //replace loop with wait for event
-        match event {
-            Event::ButtonPress(_floor) => {
-                //add request for floor, and optionally change state
-            }
-            Event::ArriveAtFloor(floor) => {
-                if elevator.state == State::Moving {
-                    elevator.change_floor()?;
-                    
-                    if elevator.check_for_request(floor) {
-                        elevator.state = State::Still;
-                    }
-                } else {
-                    return Err(elevator.error(true));
-                }
-            }
-            Event::TimerTimedOut => {
-                // what to do
-                //elevator.move(Direction::Up);
-                //event = Event::ArriveAtFloor(1);
-            }
-        }
-
-        break;
-    }
-
-    Ok(())
 }
