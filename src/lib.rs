@@ -2,10 +2,13 @@
 
 mod error;
 mod elevator;
+mod network;
+mod state_machine;
 
 use crate::error::ElevatorError;
 
 use std::error::Error;
+use std::net::{SocketAddr, TcpStream};
 use std::thread;
 
 pub struct Config {
@@ -23,9 +26,14 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
     let mut handles: Vec<thread::JoinHandle<_>> = Vec::with_capacity(n);
 
+    const HOST: [u8; 4] = [127, 0, 0, 1];
+    const BASE_PORT: u16 = 10000;
+
     for i in 0..n {
+        let addr = SocketAddr::from((HOST, BASE_PORT + i as u16));
+        let stream = TcpStream::connect(addr)?;
         let handle = thread::spawn(move || -> Result<(), ElevatorError> {
-            elevator::state_machine(i, n)
+            state_machine::run(stream, n)
         });
         handles.push(handle);
     }
