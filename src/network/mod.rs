@@ -1,5 +1,5 @@
-mod get;
-mod send;
+pub mod get;
+pub mod send;
 
 #[cfg(test)]
 mod tests {
@@ -10,7 +10,7 @@ mod tests {
     #[test]
     fn read_and_write() {
         const HOST: [u8; 4] = [127, 0, 0, 1];
-        const PORT: u16 = 10000;
+        const PORT: u16 = 7878;
 
         let handle = std::thread::spawn(|| {
             let addr = SocketAddr::from((HOST, PORT));
