@@ -5,7 +5,7 @@ use elevators::Config;
 
 fn main() {
     let config = Config {
-        n_elevators: 3,
+        n_elevators: 1,
         n_floors: 4,
     };
 

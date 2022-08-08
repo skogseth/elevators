@@ -31,7 +31,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
     for i in 0..n {
         let addr = SocketAddr::from((HOST, BASE_PORT + i as u16));
-        let stream = TcpStream::connect(addr)?;
+        let mut stream = TcpStream::connect(addr)?;
         let handle = thread::spawn(move || -> Result<(), ElevatorError> {
             state_machine::run(stream, n)
         });
