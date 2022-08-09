@@ -1,5 +1,7 @@
+use crate::elevator::button::Button;
+
 pub enum Event {
-    ButtonPress(usize),
     ArriveAtFloor(usize),
+    ButtonPress(Button, usize),
     TimerTimedOut,
 }

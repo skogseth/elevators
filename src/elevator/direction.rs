@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, Copy)]
 pub enum Direction {
-    Up,
-    Down,
+    Up = 1,
+    Down = -1,
 }
 
 impl Direction {
