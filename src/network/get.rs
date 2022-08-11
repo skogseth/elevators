@@ -28,23 +28,6 @@ pub fn order_button(stream: &mut TcpStream, button: Button, floor: usize) -> Res
     Ok(pressed)
 }
 
-/*
-pub fn buttons(stream: &mut TcpStream, n_floors: usize) -> Result<Vec<(usize, Button)>> {
-    let mut buttons = Vec::new();
-
-    for floor in 0..n_floors {
-        for button in Button::iterator() {
-            // TODO: Now returns error if ANY button/floor combo fails...
-            if order_button(stream, button, floor)? {
-                buttons.push((floor, button));
-            }
-        }
-    }
-
-    Ok(buttons)
-}
-*/
-
 pub fn floor(stream: &mut TcpStream) -> Result<Option<usize>> {
     let mut buffer: [u8; 4] = [7, 0, 0, 0];
     get_data(stream, &mut buffer)?;
