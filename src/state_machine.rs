@@ -2,7 +2,8 @@ use std::net::TcpStream;
 use std::time::Instant;
 
 use crate::elevator::Elevator;
-use crate::elevator::{button::Button, /*direction::Direction,*/ event::Event, /*request::Requests,*/ state::State};
+use crate::elevator::event::{Event, button::Button};
+use crate::elevator::{/*direction::Direction,*/ /*request::Requests,*/ state::State};
 use crate::error::ElevatorError;
 use crate::network::{get, send};
 
@@ -17,14 +18,18 @@ pub fn run(stream: TcpStream, n_floors: usize) -> Result<(), ElevatorError> {
         for event in events {
             match event {
                 Event::ArriveAtFloor(floor) => {
-                    if elevator.get_state() == State::Moving {
-                        elevator.change_floor()?;
+                    if let State::Moving(dir) = elevator.state {
+                        elevator.floor = floor;
                         
+                        //check for request => stop and wait
+                        /*
                         if elevator.check_for_request(floor) {
                             elevator.set_state(State::Still);
                         }
+                        */
                     } else {
-                        return Err(elevator.error(true));
+                        eprintln!("arrived at floor {:?} without moving, state: {:?}", floor, elevator.state);
+                        // TODO? return Err(elevator.error(true));
                     }
                 }
                 Event::ButtonPress(_button, _floor) => {

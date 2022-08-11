@@ -2,7 +2,7 @@ use std::io::prelude::*;
 use std::io::{Error, ErrorKind, Result};
 use std::net::TcpStream;
 
-use crate::elevator::button::Button;
+use crate::elevator::event::button::Button;
 
 fn get_data(stream: &mut TcpStream, buffer: &mut [u8; 4]) -> Result<()> {
     stream.write(buffer)?;

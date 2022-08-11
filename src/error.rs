@@ -1,10 +1,9 @@
-use crate::elevator::{direction::Direction, state::State};
+use crate::elevator::state::State;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ElevatorError {
     pub floor: usize,
     pub state: State,
-    pub direction: Option<Direction>,
     pub critical: bool,
 }
 
