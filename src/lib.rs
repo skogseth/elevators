@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 mod error;
-mod elevator;
-mod network;
+pub mod elevator;
+pub mod network;
 mod state_machine;
 
 use crate::error::ElevatorError;
@@ -31,7 +31,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
     for i in 0..n {
         let addr = SocketAddr::from((HOST, BASE_PORT + i as u16));
-        let mut stream = TcpStream::connect(addr)?;
+        let stream = TcpStream::connect(addr)?;
         let handle = thread::spawn(move || -> Result<(), ElevatorError> {
             state_machine::run(stream, n)
         });
