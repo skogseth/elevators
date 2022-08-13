@@ -1,9 +1,11 @@
 pub mod event;
 pub mod request;
 pub mod state;
+pub mod timer;
 
 use self::request::Requests;
 use self::state::State;
+use self::timer::Timer;
 use crate::error::ElevatorError;
 
 pub struct Elevator {
@@ -11,17 +13,20 @@ pub struct Elevator {
     n_floors: usize,
     pub requests: Requests,
     pub state: State,
+    pub timer: Option<Timer>,
 }
 
 impl Elevator {
     pub fn new(floor: usize, n_floors: usize) -> Elevator {
         let requests = Requests::new(n_floors);
         let state = State::Idle;
+        let timer = None;
         Elevator {
             floor,
             n_floors,
             requests,
             state,
+            timer,
         }
     }
 
