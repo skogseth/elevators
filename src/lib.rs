@@ -9,9 +9,7 @@ mod error;
 mod network;
 mod state_machine;
 
-use crate::elevator::event::button::Button;
 use crate::error::ElevatorError;
-use crate::network::get;
 
 pub struct Config {
     pub n_elevators: usize,
@@ -35,8 +33,6 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
     const HOST: [u8; 4] = [127, 0, 0, 1];
     const BASE_PORT: u16 = 10000;
-    let addr = SocketAddr::from((HOST, BASE_PORT));
-    //let mut stream = TcpStream::connect(addr)?;
 
     for i in 0..n_elevators {
         let addr = SocketAddr::from((HOST, BASE_PORT + i as u16));
@@ -69,19 +65,9 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
             break;
         }
 
-        // CHECK FOR BUTTON PRESS
+        // DISTRIBUTE REQUESTS
         /*
-        for floor in 0..n_floors {
-            for button in [Button::HallUp, Button::HallDown] {
-                if let Ok(_pressed) = get::order_button(&mut stream, button, floor) {
-                    // SEND MESSAGE TO IDEAL ELEVATOR
-                } else {
-                    let identifier = format!("floor {floor:?} & button {button:?} (main thread)");
-                    eprintln!("caught error in get::order_button() for {identifier}");
-                    // TODO
-                }
-            }
-        }
+        // TODO
         */
     }
 
