@@ -1,45 +1,88 @@
 #![allow(dead_code)]
-
-mod error;
-pub mod elevator;
-pub mod network;
-mod state_machine;
-
-use crate::error::ElevatorError;
-
 use std::error::Error;
 use std::net::{SocketAddr, TcpStream};
-use std::thread;
+use std::sync::mpsc::{self, Sender};
+use std::thread::{self, JoinHandle};
+
+mod elevator;
+mod error;
+mod network;
+mod state_machine;
+
+use crate::elevator::event::button::Button;
+use crate::error::ElevatorError;
+use crate::network::get;
 
 pub struct Config {
     pub n_elevators: usize,
     pub n_floors: usize,
 }
 
+pub enum Message {
+    Request { floor: usize },
+    Shutdown,
+}
+
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     println!("Executing run function");
 
-    let n = config.n_elevators;
-    let m = config.n_floors;
+    let Config { n_elevators, n_floors} = config;
+    println!("Number of elevator: {n_elevators}");
+    println!("Number of floors: {n_floors}");
 
-    println!("(n, m) = ({n}, {m})");
-
-    let mut handles: Vec<thread::JoinHandle<_>> = Vec::with_capacity(n);
+    let mut handles: Vec<JoinHandle<_>> = Vec::with_capacity(n_elevators);
+    let mut transmitters: Vec<Sender<Message>> = Vec::with_capacity(n_elevators);
 
     const HOST: [u8; 4] = [127, 0, 0, 1];
     const BASE_PORT: u16 = 10000;
+    let addr = SocketAddr::from((HOST, BASE_PORT));
+    //let mut stream = TcpStream::connect(addr)?;
 
-    for i in 0..n {
+    for i in 0..n_elevators {
         let addr = SocketAddr::from((HOST, BASE_PORT + i as u16));
+        println!("Thread {i} attempting to connect to {addr}");
         let stream = TcpStream::connect(addr)?;
+        println!("Thread {i} connected to {addr}");
+        let (tx, rx) = mpsc::channel();
         let handle = thread::spawn(move || -> Result<(), ElevatorError> {
-            state_machine::run(stream, n)
+            state_machine::run(stream, rx, n_floors)
         });
         handles.push(handle);
+        transmitters.push(tx);
     }
 
-    for handle in handles {
-        handle.join().expect("Thread panicked, caught by main!")?;
+    loop {
+        // CHECK FOR ELEVATOR CRASHES
+        for i in 0..handles.len() {
+            if handles[i].is_finished() {
+                handles
+                    .remove(i)
+                    .join()
+                    .expect("Thread panicked, caught by main!")
+                    .expect("Elevator crashed");
+                transmitters.remove(i);
+            }
+        }
+
+        // CHECK IF ALL ELEVATORS ARE DOWN
+        if handles.is_empty() {
+            break;
+        }
+
+        // CHECK FOR BUTTON PRESS
+        /*
+        for floor in 0..n_floors {
+            for button in [Button::HallUp, Button::HallDown] {
+                if let Ok(_pressed) = get::order_button(&mut stream, button, floor) {
+                    // SEND MESSAGE TO IDEAL ELEVATOR
+                } else {
+                    let identifier = format!("floor {floor:?} & button {button:?} (main thread)");
+                    eprintln!("caught error in get::order_button() for {identifier}");
+                    // TODO
+                }
+            }
+        }
+        */
     }
 
     Ok(())
