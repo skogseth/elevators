@@ -2,8 +2,8 @@ pub mod event;
 pub mod request;
 pub mod state;
 
-use crate::elevator::request::Requests;
-use crate::elevator::state::{State, direction::Direction};
+use self::request::Requests;
+use self::state::State;
 use crate::error::ElevatorError;
 
 pub struct Elevator {
@@ -13,25 +13,30 @@ pub struct Elevator {
     pub state: State,
 }
 
-
 impl Elevator {
     pub fn new(floor: usize, n_floors: usize) -> Elevator {
         let requests = Requests::new(n_floors);
         let state = State::Idle;
-        Elevator {floor, n_floors, requests, state}
-    }
-
-    pub fn error(&self, critical: bool) -> ElevatorError {
-        ElevatorError {
-            floor: self.floor,
-            state: self.state,
-            critical
+        Elevator {
+            floor,
+            n_floors,
+            requests,
+            state,
         }
     }
 
-    pub fn get_n_floors(&self) -> usize {self.n_floors }
-    //pub fn get_state(&self) -> State { self.state }
-    //pub fn set_state(&mut self, state: State) { self.state = state }
+    pub fn error(&self, critical: bool) -> ElevatorError {
+        let (floor, state) = (self.floor, self.state);
+        ElevatorError {
+            floor,
+            state,
+            critical,
+        }
+    }
+
+    pub fn get_n_floors(&self) -> usize {
+        self.n_floors
+    }
 }
 
 impl std::fmt::Display for Elevator {
