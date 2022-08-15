@@ -73,8 +73,7 @@ impl Requests {
         result
     }
 
-    pub fn check_for_requests(&self, current_floor: usize, direction: Direction) -> bool {
-        //println!("checking for requests in direction {direction:?}");
+    pub fn check_in_direction(&self, current_floor: usize, direction: Direction) -> bool {
         let (floors, buttons) = match direction {
             Direction::Up => (
                 (current_floor + 1)..self.n_floors,
@@ -82,14 +81,26 @@ impl Requests {
             ),
             Direction::Down => (0..current_floor, [Button::Cab, Button::HallDown]),
         };
-        //println!("Buttons: {buttons:?}");
-        //println!("Floors: {floors:?}");
+
         for button in buttons {
             if self.get(&button).arr[floors.clone()].iter().any(|&x| x) {
                 return true;
             }
         }
+
         false
+    }
+
+    pub fn check_for_any(&self) -> Option<(usize, Button)> {
+        let buttons = [Button::Cab, Button::HallUp, Button::HallDown];
+        for button in buttons {
+            for floor in 0..self.n_floors {
+                if self.get(&button).arr[floor] {
+                    return Some((floor, button));
+                }
+            }
+        }
+        None
     }
 }
 
