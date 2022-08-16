@@ -53,8 +53,8 @@ impl Requests {
         self.get_mut(&button).set(true, floor);
     }
 
-    pub fn request_at_floor(&mut self, current_floor: usize, direction: Direction) -> bool {
-        let mut result = false;
+    pub fn request_at_floor(&mut self, current_floor: usize, direction: Direction) -> Vec<Button> {
+        let mut results = Vec::new();
         let buttons = [
             Button::Cab,
             match direction {
@@ -66,11 +66,11 @@ impl Requests {
         for button in buttons {
             if self.get(&button).get(current_floor) {
                 self.get_mut(&button).set(false, current_floor);
-                result = true;
+                results.push(button);
             }
         }
 
-        result
+        results
     }
 
     pub fn check_in_direction(&self, current_floor: usize, direction: Direction) -> bool {
