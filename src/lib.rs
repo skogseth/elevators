@@ -6,21 +6,17 @@ use std::thread;
 
 mod elevator;
 mod error;
+mod message;
 mod network;
 mod state_machine;
 
-use crate::elevator::state::direction::Direction;
+use crate::elevator::state::State;
 use crate::error::ElevatorError;
+use crate::message::Message;
 
 pub struct Config {
     pub n_elevators: usize,
     pub n_floors: usize,
-}
-
-#[derive(Debug)]
-pub enum Message {
-    Request { floor: usize, direction: Direction },
-    Shutdown,
 }
 
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
@@ -35,6 +31,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
     let mut handles = Vec::with_capacity(n_elevators);
     let mut transmitters = Vec::with_capacity(n_elevators);
+    let mut costs = Vec::with_capacity(n_elevators);
     let (tx_thread, rx) = mpsc::channel();
 
     const HOST: [u8; 4] = [127, 0, 0, 1];
@@ -52,6 +49,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
         });
         handles.push(handle);
         transmitters.push(tx);
+        costs.push(0.);
     }
 
     loop {
@@ -73,18 +71,27 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
         }
 
         match rx.try_recv() {
-            Ok(msg) => {
-                match msg {
-                    Message::Request { floor: _, direction: _ } => {
-                        // TODO: Implement algorithm to find best elevator
-                        let i = 0;
-                        transmitters[i].send(msg).unwrap();
-                    }
-                    Message::Shutdown => {
-                        // TODO: Remove 
+            Ok(msg) => match msg {
+                Message::Request { floor, direction } => {
+                    // TODO: Implement algorithm to find best elevator
+                    let i = 0;
+                    transmitters[i].send(msg).unwrap();
+                }
+                Message::HallButtonLight { .. } => {
+                    // Send message to all elevators for hall button light
+                    for tx in transmitters.iter() {
+                        tx.send(msg).unwrap();
                     }
                 }
-            }
+                Message::ElevatorInfo {
+                    floor,
+                    state,
+                    n_requests,
+                } => {}
+                Message::Shutdown => {
+                    eprint!("Received shutdown message from thread");
+                }
+            },
             Err(e) => {
                 if e == TryRecvError::Disconnected {
                     break;
@@ -94,4 +101,13 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn cost_function(state: State, floor_difference: i32, n_requests: i32, in_direction: bool) -> i32 {
+    let state_value = match state {
+        State::Idle => 0,
+        State::Moving(..) => 1,
+        State::Still(..) => 3,
+    };
+    state_value + floor_difference + 2 * n_requests + (!in_direction as i32)
 }

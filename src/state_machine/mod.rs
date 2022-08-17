@@ -1,23 +1,32 @@
 use std::net::TcpStream;
 use std::sync::mpsc::{Receiver, Sender};
+use std::{thread, time::Duration};
 
 mod handle;
 
 use crate::elevator::event::{button::Button, Event};
-use crate::elevator::Elevator;
+use crate::elevator::state::direction::Direction;
 use crate::elevator::state::State;
-use crate::error::ElevatorError;
-use crate::network::get;
-use crate::Message;
+use crate::elevator::Elevator;
+use crate::error::{ElevatorError, Logger};
+use crate::network::{get, send};
+use crate::message::Message;
 
-const TIMEOUT: u128 = 10;
+const TIME_BETWEEN_EVENT_CHECKS: u64 = 5; // in milliseconds
 
 pub fn run(
     mut stream: TcpStream,
     (tx, rx): (Sender<Message>, Receiver<Message>),
     n_floors: usize,
 ) -> Result<(), ElevatorError> {
-    let start_floor = get::floor(&mut stream).unwrap().unwrap();
+    let start_floor = match start_floor(&mut stream) {
+        Ok(start_floor) => start_floor,
+        Err(_e) => {
+            eprintln!("Could not start up elevator");
+            let elevator = Elevator::new(0, 0);
+            return Err(elevator.error(true));
+        }
+    };
     let mut elevator = Elevator::new(start_floor, n_floors);
 
     loop {
@@ -25,7 +34,8 @@ pub fn run(
 
         match event {
             Event::ArriveAtFloor(floor) => {
-                handle::arrive_at_floor(&mut stream, &mut elevator, floor);
+                elevator.floor = floor;
+                handle::arrive_at_floor(&mut stream, &tx, &mut elevator);
             }
             Event::TimerTimedOut => {
                 handle::timer_timed_out(&mut stream, &mut elevator);
@@ -34,6 +44,17 @@ pub fn run(
                 Message::Request { floor, direction } => {
                     let button = Button::from(direction);
                     elevator.requests.add_request(button, floor);
+                }
+                Message::HallButtonLight {
+                    floor,
+                    direction,
+                    on,
+                } => {
+                    let button = Button::from(direction);
+                    send::order_button_light(&mut stream, button, floor, on).log_if_err();
+                }
+                Message::ElevatorInfo { .. } => {
+                    eprintln!("Main thread sent elevator info");
                 }
                 Message::Shutdown => return Ok(()),
             },
@@ -49,10 +70,8 @@ pub fn run(
 }
 
 fn wait_for_event(stream: &mut TcpStream, rx: &Receiver<Message>, elevator: &Elevator) -> Event {
-    println!(
-        "Waiting for event... (State::{:?}))",
-        elevator.state
-    );
+    println!("Waiting for event... (State::{:?}))", elevator.state);
+
     loop {
         // CHECK FOR FLOOR ARRIVAL
         if let Ok(opt_floor) = get::floor(stream) {
@@ -99,6 +118,24 @@ fn wait_for_event(stream: &mut TcpStream, rx: &Receiver<Message>, elevator: &Ele
                     eprintln!("caught error in get::order_button() for {identifier}");
                 }
             }
+        }
+
+        // If no events are found, wait a tiny amount of time before checking for new requests
+        thread::sleep(Duration::from_millis(TIME_BETWEEN_EVENT_CHECKS));
+    }
+}
+
+fn start_floor(stream: &mut TcpStream) -> Result<usize, std::io::Error> {
+    if let Some(floor) = get::floor(stream)? {
+        send::floor_indicator(stream, floor)?;
+        return Ok(floor);
+    }
+    send::motor_direction(stream, Direction::Down)?;
+    loop {
+        if let Some(floor) = get::floor(stream)? {
+            send::stop(stream)?;
+            send::floor_indicator(stream, floor)?;
+            return Ok(floor);
         }
     }
 }

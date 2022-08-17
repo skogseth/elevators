@@ -14,3 +14,15 @@ impl std::fmt::Display for ElevatorError {
 }
 
 impl std::error::Error for ElevatorError {}
+
+pub trait Logger {
+    fn log_if_err(self);
+}
+
+impl Logger for Result<(), std::io::Error> {
+    fn log_if_err(self) {
+        if let Err(e) = self {
+            eprintln!("{:?}", e);
+        }
+    } 
+}
