@@ -1,6 +1,6 @@
 use crate::elevator::event::button::Button;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
     Up = 1,
     Down = -1,

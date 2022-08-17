@@ -9,12 +9,13 @@ use crate::elevator::state::direction::Direction;
 use crate::elevator::state::State;
 use crate::elevator::Elevator;
 use crate::error::{ElevatorError, Logger};
-use crate::network::{get, send};
 use crate::message::Message;
+use crate::network::{get, send};
 
 const TIME_BETWEEN_EVENT_CHECKS: u64 = 5; // in milliseconds
 
 pub fn run(
+    thread_id: usize,
     mut stream: TcpStream,
     (tx, rx): (Sender<Message>, Receiver<Message>),
     n_floors: usize,
@@ -30,7 +31,7 @@ pub fn run(
     let mut elevator = Elevator::new(start_floor, n_floors);
 
     loop {
-        let event = wait_for_event(&mut stream, &rx, &elevator);
+        let event = wait_for_event(thread_id, &mut stream, (&tx, &rx), &elevator);
 
         match event {
             Event::ArriveAtFloor(floor) => {
@@ -52,6 +53,7 @@ pub fn run(
                 } => {
                     let button = Button::from(direction);
                     send::order_button_light(&mut stream, button, floor, on).log_if_err();
+                    elevator.requests.update_active_button(button, floor, !on);
                 }
                 Message::ElevatorInfo { .. } => {
                     eprintln!("Main thread sent elevator info");
@@ -69,15 +71,31 @@ pub fn run(
     }
 }
 
-fn wait_for_event(stream: &mut TcpStream, rx: &Receiver<Message>, elevator: &Elevator) -> Event {
-    println!("Waiting for event... (State::{:?}))", elevator.state);
+fn wait_for_event(
+    thread_id: usize,
+    stream: &mut TcpStream,
+    (tx, rx): (&Sender<Message>, &Receiver<Message>),
+    elevator: &Elevator,
+) -> Event {
+    println!(
+        "Thread {thread_id}: Waiting for event... (State::{:?}))",
+        elevator.state
+    );
+
+    let msg = Message::ElevatorInfo {
+        thread_id,
+        floor: elevator.floor,
+        state: elevator.state,
+        n_requests: elevator.requests.number_of_requests(),
+    };
+    tx.send(msg).unwrap();
 
     loop {
         // CHECK FOR FLOOR ARRIVAL
         if let Ok(opt_floor) = get::floor(stream) {
             if let Some(floor) = opt_floor {
                 if floor != elevator.floor {
-                    println!("Arrival at floor {floor}");
+                    println!("Thread {thread_id}: Arrival at floor {floor}");
                     return Event::ArriveAtFloor(floor);
                 }
             }
@@ -88,29 +106,25 @@ fn wait_for_event(stream: &mut TcpStream, rx: &Receiver<Message>, elevator: &Ele
         // CHECK FOR TIMER
         if let Some(timer) = elevator.timer {
             if timer.is_done() {
-                eprintln!("Timer finished");
+                eprintln!("Thread {thread_id}: Timer finished");
                 return Event::TimerTimedOut;
             }
         }
 
         // CHECK FOR MESSAGES
         if let Ok(msg) = rx.try_recv() {
-            eprintln!("Message received: {:?}", msg);
+            eprintln!("Thread {thread_id}: Message received: {:?}", msg);
             return Event::MessageReceived(msg);
         }
 
         // CHECK FOR BUTTON PRESS
         for button in Button::iterator() {
-            let requests = elevator.requests.get(&button);
-            let floors = requests
-                .iter()
-                .enumerate()
-                .filter(|&x| *x.1 == false)
-                .map(|x| x.0);
+            let floors = elevator.requests.get_active_buttons(button);
+
             for floor in floors {
                 if let Ok(pressed) = get::order_button(stream, button, floor) {
                     if pressed {
-                        println!("Button {:?} was pressed at floor {:?}", button, floor);
+                        println!("Thread {thread_id}: Button {:?} was pressed at floor {:?}", button, floor);
                         return Event::ButtonPress(button, floor);
                     }
                 } else {

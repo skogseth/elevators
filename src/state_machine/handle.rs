@@ -40,6 +40,7 @@ pub fn arrive_at_floor(stream: &mut TcpStream, tx: &Sender<Message>, elevator: &
 
     send::door_open_light(stream, true).log_if_err();
     send::order_button_light(stream, Button::Cab, elevator.floor, false).log_if_err();
+    elevator.requests.update_active_button(Button::Cab, elevator.floor, true);
 
     let msg = Message::HallButtonLight {
         floor: elevator.floor,
@@ -103,6 +104,7 @@ pub fn button_press(
     if button == Button::Cab {
         elevator.requests.add_request(button, floor);
         send::order_button_light(stream, button, floor, true).log_if_err();
+        elevator.requests.update_active_button(button, floor, false);
     } else {
         // Can safely unwrap direction since Button::Cab has been handled
         let direction = Direction::try_from(button).unwrap();
@@ -189,6 +191,7 @@ pub fn try_move(stream: &mut TcpStream, elevator: &mut Elevator) -> Result<(), C
             elevator.timer = Some(Timer::from_secs(TIME_WAIT_ON_FLOOR));
             send::door_open_light(stream, true).log_if_err();
             send::order_button_light(stream, button, floor, false).log_if_err();
+            elevator.requests.update_active_button(Button::Cab, elevator.floor, true);
             return Ok(());
         }
     };

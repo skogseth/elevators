@@ -25,20 +25,32 @@ impl<T: Copy> Array<T> {
     pub fn iter(&self) -> core::slice::Iter<T> {
         self.arr.into_iter()
     }
+
+    pub fn len(&self) -> usize {
+        self.arr.len()
+    }
 }
 
 pub struct Requests {
     map: HashMap<Button, Array<bool>>,
+    active_buttons: HashMap<Button, Array<bool>>,
     n_floors: usize,
 }
 
 impl Requests {
     pub fn new(n_floors: usize) -> Requests {
         let mut map = HashMap::new();
+        let mut active_buttons = HashMap::new();
         for button in Button::iterator() {
             map.insert(button, Array::from_val(false, n_floors));
+            active_buttons.insert(button, Array::from_val(true, n_floors));
         }
-        Requests { map, n_floors }
+
+        Requests {
+            map,
+            active_buttons,
+            n_floors,
+        }
     }
 
     pub fn get(&self, button: &Button) -> &Array<bool> {
@@ -101,6 +113,32 @@ impl Requests {
             }
         }
         None
+    }
+
+    pub fn number_of_requests(&self) -> usize {
+        let mut n_requests = 0;
+        for button in Button::iterator() {
+            n_requests += self.get(&button).len();
+        }
+        n_requests
+    }
+
+    pub fn get_active_buttons(&self, button: Button) -> Vec<usize> {
+        self.active_buttons
+            .get(&button)
+            .unwrap()
+            .iter()
+            .enumerate()
+            .filter(|&x| *x.1 == true)
+            .map(|x| x.0)
+            .collect::<Vec<usize>>()
+    }
+
+    pub fn update_active_button(&mut self, button: Button, floor: usize, active: bool) {
+        self.active_buttons
+            .get_mut(&button)
+            .unwrap()
+            .set(active, floor);
     }
 }
 

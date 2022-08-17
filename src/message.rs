@@ -12,6 +12,7 @@ pub enum Message {
         on: bool,
     },
     ElevatorInfo {
+        thread_id: usize,
         floor: usize,
         state: State,
         n_requests: usize,
