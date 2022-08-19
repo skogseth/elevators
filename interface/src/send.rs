@@ -1,8 +1,8 @@
 use std::io::prelude::*;
 use std::net::TcpStream;
 
-use crate::elevator::state::direction::Direction;
-use crate::elevator::event::button::Button;
+use crate::types::Button;
+use crate::types::Direction;
 
 fn send_data(stream: &mut TcpStream, buffer: &[u8; 4]) -> std::io::Result<()> {
     stream.write(buffer)?;

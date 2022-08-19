@@ -1,16 +1,9 @@
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum Button {
-    HallUp = 0,
-    HallDown = 1,
-    Cab = 2,
-}
-
-use self::Button::*;
-use crate::elevator::state::direction::Direction;
+use crate::types::Button;
+use crate::types::Direction;
 
 impl Button {
     pub fn iterator() -> impl Iterator<Item = Button> {
-        [HallUp, HallDown, Cab].iter().copied()
+        [Button::HallUp, Button::HallDown, Button::Cab].iter().copied()
     }
 }
 

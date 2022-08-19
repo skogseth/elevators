@@ -1,10 +1,5 @@
-use crate::elevator::event::button::Button;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Direction {
-    Up = 1,
-    Down = -1,
-}
+use crate::types::Button;
+use crate::types::Direction;
 
 impl Direction {
     fn to_str(&self) -> &str {
