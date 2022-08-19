@@ -1,15 +1,15 @@
-use crate::elevator::event::button::Button;
-use crate::elevator::state::direction::Direction;
+use std::cmp::Ordering;
+use std::net::TcpStream;
+use std::sync::mpsc::Sender;
+
+use interface::send;
+use interface::types::{Button, Direction};
+
 use crate::elevator::state::State;
 use crate::elevator::timer::Timer;
 use crate::elevator::Elevator;
 use crate::error::Logger;
-use crate::network::send;
 use crate::Message;
-
-use std::cmp::Ordering;
-use std::net::TcpStream;
-use std::sync::mpsc::Sender;
 
 const TIME_WAIT_ON_FLOOR: u64 = 3; // in seconds
 
@@ -40,7 +40,9 @@ pub fn arrive_at_floor(stream: &mut TcpStream, tx: &Sender<Message>, elevator: &
 
     send::door_open_light(stream, true).log_if_err();
     send::order_button_light(stream, Button::Cab, elevator.floor, false).log_if_err();
-    elevator.requests.update_active_button(Button::Cab, elevator.floor, true);
+    elevator
+        .requests
+        .update_active_button(Button::Cab, elevator.floor, true);
 
     let msg = Message::HallButtonLight {
         floor: elevator.floor,
@@ -114,7 +116,11 @@ pub fn button_press(
         tx.send(msg).unwrap();
 
         // Send hall button light message to main thread
-        let msg = Message::HallButtonLight { floor, direction, on: true };
+        let msg = Message::HallButtonLight {
+            floor,
+            direction,
+            on: true,
+        };
         tx.send(msg).unwrap();
     }
 }
@@ -191,7 +197,9 @@ pub fn try_move(stream: &mut TcpStream, elevator: &mut Elevator) -> Result<(), C
             elevator.timer = Some(Timer::from_secs(TIME_WAIT_ON_FLOOR));
             send::door_open_light(stream, true).log_if_err();
             send::order_button_light(stream, button, floor, false).log_if_err();
-            elevator.requests.update_active_button(Button::Cab, elevator.floor, true);
+            elevator
+                .requests
+                .update_active_button(Button::Cab, elevator.floor, true);
             return Ok(());
         }
     };

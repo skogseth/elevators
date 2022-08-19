@@ -1,6 +1,4 @@
-pub mod button;
-
-use self::button::Button;
+use interface::types::Button;
 use crate::Message;
 
 pub enum Event {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{event::button::Button, state::direction::Direction};
+use interface::types::{Button, Direction};
 
 pub struct Array<T: Copy> {
     arr: Box<[T]>,

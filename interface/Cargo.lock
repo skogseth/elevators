@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "network"
+name = "interface"
 version = "0.1.0"

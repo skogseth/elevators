@@ -1,6 +1,4 @@
-pub mod direction;
-
-use self::direction::Direction;
+use interface::types::Direction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {

@@ -2,15 +2,16 @@ use std::net::TcpStream;
 use std::sync::mpsc::{Receiver, Sender};
 use std::{thread, time::Duration};
 
+use interface::{get, send};
+use interface::types::{Button, Direction};
+
 mod handle;
 
-use crate::elevator::event::{button::Button, Event};
-use crate::elevator::state::direction::Direction;
+use crate::elevator::event::Event;
 use crate::elevator::state::State;
 use crate::elevator::Elevator;
 use crate::error::{ElevatorError, Logger};
 use crate::message::Message;
-use crate::network::{get, send};
 
 const TIME_BETWEEN_EVENT_CHECKS: u64 = 5; // in milliseconds
 
@@ -124,7 +125,10 @@ fn wait_for_event(
             for floor in floors {
                 if let Ok(pressed) = get::order_button(stream, button, floor) {
                     if pressed {
-                        println!("Thread {thread_id}: Button {:?} was pressed at floor {:?}", button, floor);
+                        println!(
+                            "Thread {thread_id}: Button {:?} was pressed at floor {:?}",
+                            button, floor
+                        );
                         return Event::ButtonPress(button, floor);
                     }
                 } else {

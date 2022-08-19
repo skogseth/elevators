@@ -8,10 +8,9 @@ use std::thread::{self, JoinHandle};
 mod elevator;
 mod error;
 mod message;
-mod network;
 mod state_machine;
 
-use elevator::state::direction::Direction;
+use interface::types::Direction;
 
 use crate::elevator::state::State;
 use crate::error::ElevatorError;

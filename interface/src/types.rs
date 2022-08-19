@@ -1,7 +1,7 @@
 pub mod button;
 pub mod direction;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Button {
     HallUp = 0,
     HallDown = 1,
@@ -12,4 +12,10 @@ pub enum Button {
 pub enum Direction {
     Up = 1,
     Down = -1,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Floor {
+    floor: usize,
+    n_floors: usize,
 }

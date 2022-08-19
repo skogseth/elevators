@@ -1,4 +1,6 @@
-use crate::elevator::state::{direction::Direction, State};
+use interface::types::Direction;
+
+use crate::elevator::state::State;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Message {
