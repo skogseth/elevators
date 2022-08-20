@@ -1,4 +1,3 @@
-use crate::types::Button;
 use crate::types::Direction;
 
 impl Direction {
@@ -17,14 +16,11 @@ impl Direction {
     }
 }
 
-impl TryFrom<Button> for Direction {
-    type Error = &'static str;
-
-    fn try_from(button: Button) -> Result<Self, Self::Error> {
-        match button {
-            Button::HallUp => Ok(Direction::Up),
-            Button::HallDown => Ok(Direction::Down),
-            Button::Cab => Err("Button::Cab has no direction"),
+impl From<Direction> for u8 {
+    fn from(val: Direction) -> u8 {
+        match val {
+            Direction::Up => 1,
+            Direction::Down => 255, // = -1
         }
     }
 }
