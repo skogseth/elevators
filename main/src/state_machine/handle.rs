@@ -5,11 +5,11 @@ use std::sync::mpsc::Sender;
 use interface::send;
 use interface::types::{Button, Direction};
 
-use crate::elevator::state::State;
-use crate::elevator::timer::Timer;
-use crate::elevator::Elevator;
+use crate::types::elevator::Timer;
+use crate::types::{Elevator, Message};
 use crate::error::Logger;
-use crate::Message;
+
+use super::types::State;
 
 const TIME_WAIT_ON_FLOOR: u64 = 3; // in seconds
 

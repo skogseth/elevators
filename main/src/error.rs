@@ -1,4 +1,4 @@
-use crate::elevator::state::State;
+use crate::state_machine::types::State;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ElevatorError {

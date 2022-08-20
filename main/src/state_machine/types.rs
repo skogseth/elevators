@@ -1,4 +1,12 @@
-use interface::types::Direction;
+use interface::types::{Button, Direction};
+use crate::types::Message;
+
+pub enum Event {
+    ArriveAtFloor(usize),
+    TimerTimedOut,
+    MessageReceived(Message),
+    ButtonPress(Button, usize),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
@@ -17,3 +25,6 @@ impl std::fmt::Display for State {
         write!(f, "{s}")
     }
 }
+
+
+

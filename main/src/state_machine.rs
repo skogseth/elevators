@@ -5,13 +5,13 @@ use std::{thread, time::Duration};
 use interface::{get, send};
 use interface::types::{Button, Direction};
 
-mod handle;
-
-use crate::elevator::event::Event;
-use crate::elevator::state::State;
-use crate::elevator::Elevator;
+use crate::types::{Elevator, Message};
 use crate::error::{ElevatorError, Logger};
-use crate::message::Message;
+
+mod handle;
+pub mod types;
+
+use self::types::{Event, State};
 
 const TIME_BETWEEN_EVENT_CHECKS: u64 = 5; // in milliseconds
 

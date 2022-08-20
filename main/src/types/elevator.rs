@@ -1,19 +1,27 @@
-pub mod event;
-pub mod request;
-pub mod state;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
+use interface::types::Button;
+
+use crate::error::ElevatorError;
+use crate::state_machine::types::State;
+
+pub mod requests;
 pub mod timer;
 
-use self::request::Requests;
-use self::state::State;
-use self::timer::Timer;
-use crate::error::ElevatorError;
+use self::requests::Array;
+use super::Elevator;
 
-pub struct Elevator {
-    pub floor: usize,
+pub struct Requests {
+    map: HashMap<Button, Array<bool>>,
+    active_buttons: HashMap<Button, Array<bool>>,
     n_floors: usize,
-    pub requests: Requests,
-    pub state: State,
-    pub timer: Option<Timer>,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Timer {
+    now: Instant,
+    duration: Duration,
 }
 
 impl Elevator {

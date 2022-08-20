@@ -2,12 +2,21 @@ use std::collections::HashMap;
 
 use interface::types::{Button, Direction};
 
+use super::Requests;
+
 pub struct Array<T: Copy> {
     arr: Box<[T]>,
     len: usize,
 }
 
 impl<T: Copy> Array<T> {
+    /*
+    fn with_size(len: usize) -> Array<T> {
+        let arr = [T; len];
+        Array { arr, len }
+    }
+    */
+
     fn from_val(val: T, len: usize) -> Array<T> {
         let arr = (0..len).map(|_| val).collect();
         Array { arr, len }
@@ -29,12 +38,6 @@ impl<T: Copy> Array<T> {
     pub fn len(&self) -> usize {
         self.arr.len()
     }
-}
-
-pub struct Requests {
-    map: HashMap<Button, Array<bool>>,
-    active_buttons: HashMap<Button, Array<bool>>,
-    n_floors: usize,
 }
 
 impl Requests {
