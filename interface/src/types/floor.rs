@@ -27,6 +27,11 @@ impl Floor {
         self.val
     }
 
+    pub fn change(self, val: usize) -> Result<Self, usize> {
+        let floor = Floor::from_value(val);
+        floor.ok_or(self.max)
+    } 
+
     pub fn initialize(max_floor: usize) {
         MAX_FLOORS.set(max_floor).unwrap();
     }
