@@ -56,6 +56,7 @@ impl Requests {
         }
     }
 
+    /*
     pub fn get(&self, button: &Button) -> &Array<bool> {
         self.map.get(button).unwrap()
     }
@@ -63,19 +64,31 @@ impl Requests {
     pub fn get_mut(&mut self, button: &Button) -> &mut Array<bool> {
         self.map.get_mut(button).unwrap()
     }
+    */
 
     pub fn add_request(&mut self, button: Button, floor: Floor) {
-        self.get_mut(&button).set(true, floor.into());
+        self.map.get_mut(&button).unwrap().set(true, floor.into());
     }
 
-    pub fn request_at_floor(&mut self, current_floor: Floor, direction: Direction) -> Vec<Button> {
+    pub fn get_request(&mut self, floor: Floor, button: Button) -> bool {
+        let index = usize::from(floor);
+        let check = self.map.get(&button).unwrap().get(index);
+
+        if check {
+            self.map.get_mut(&button).unwrap().set(false, index);
+        }
+
+        check
+    }
+
+    pub fn get_requests_at_floor(&mut self, current_floor: Floor, direction: Direction) -> Vec<Button> {
         let mut results = Vec::new();
         let buttons = [Button::Cab, Button::Hall(direction)];
         let index = usize::from(current_floor);
 
         for button in buttons {
-            if self.get(&button).get(index) {
-                self.get_mut(&button).set(false, index);
+            if self.map.get(&button).unwrap().get(index) {
+                self.map.get_mut(&button).unwrap().set(false, index);
                 results.push(button);
             }
         }
@@ -91,7 +104,10 @@ impl Requests {
         };
 
         for button in buttons {
-            if self.get(&button).arr[floors.clone()].iter().any(|&x| x) {
+            if self.map.get(&button).unwrap().arr[floors.clone()]
+                .iter()
+                .any(|&x| x)
+            {
                 return true;
             }
         }
@@ -102,7 +118,7 @@ impl Requests {
     pub fn check_for_any(&self) -> Option<(Floor, Button)> {
         for button in Button::iterator() {
             for floor in 0..self.n_floors {
-                if self.get(&button).arr[floor] {
+                if self.map.get(&button).unwrap().arr[floor] {
                     return Some((Floor::from(floor), button));
                 }
             }
@@ -113,7 +129,14 @@ impl Requests {
     pub fn number_of_requests(&self) -> usize {
         let mut n_requests = 0;
         for button in Button::iterator() {
-            n_requests += self.get(&button).len();
+            n_requests += self
+                .map
+                .get(&button)
+                .unwrap()
+                .iter()
+                .filter(|&x| *x == true)
+                .collect::<Vec<_>>()
+                .len();
         }
         n_requests
     }

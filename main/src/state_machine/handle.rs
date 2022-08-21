@@ -64,7 +64,8 @@ pub fn arrive_at_floor(stream: &mut TcpStream, tx: &Sender<Message>, elevator: &
 // Cab request => direction
 fn check_for_stop(elevator: &mut Elevator, direction: Direction) -> Result<Direction, ()> {
     let requests = &mut elevator.requests;
-    let mut requests_at_floor_in_direction = requests.request_at_floor(elevator.floor, direction);
+    let mut requests_at_floor_in_direction =
+        requests.get_requests_at_floor(elevator.floor, direction);
     let mut result = Err(());
 
     // Check if any requests at floor in direction
@@ -84,7 +85,7 @@ fn check_for_stop(elevator: &mut Elevator, direction: Direction) -> Result<Direc
     // If true, return with opposite direction as result
     if !requests.check_in_direction(elevator.floor, direction) {
         if !requests
-            .request_at_floor(elevator.floor, direction.opposite())
+            .get_requests_at_floor(elevator.floor, direction.opposite())
             .is_empty()
         {
             return Ok(direction.opposite());
@@ -154,22 +155,23 @@ fn try_continue(
         return Err(false);
     }
 
-    match send::motor_direction(stream, direction) {
-        Ok(_) => {
-            elevator.state = State::Moving(direction);
-            return Ok(());
-        }
-        Err(_) => {
-            eprintln!(
-                "failed to move in direction {:?} from {:?}",
-                direction, elevator.floor
-            );
-            return Err(true);
-        }
+    if let Err(_) = send::motor_direction(stream, direction) {
+        eprintln!(
+            "failed to move in direction {:?} from {:?}",
+            direction, elevator.floor
+        );
+        return Err(true);
     }
+
+    elevator.state = State::Moving(direction);
+    return Ok(());
 }
 
-pub fn try_move(stream: &mut TcpStream, elevator: &mut Elevator) -> Result<(), Critical> {
+pub fn try_move(
+    stream: &mut TcpStream,
+    tx: &Sender<Message>,
+    elevator: &mut Elevator,
+) -> Result<(), Critical> {
     let (floor, button) = match elevator.requests.check_for_any() {
         Some(tuple) => tuple,
         None => return Err(false),
@@ -179,40 +181,40 @@ pub fn try_move(stream: &mut TcpStream, elevator: &mut Elevator) -> Result<(), C
         Ordering::Less => Direction::Up,
         Ordering::Greater => Direction::Down,
         Ordering::Equal => {
-            let directions = match button {
-                Button::Cab => vec![Direction::Up, Direction::Down],
-                Button::Hall(direction) => vec![direction],
-                
+            let direction = match button {
+                Button::Cab => Direction::Up,
+                Button::Hall(direction) => direction,
             };
 
-            for direction in directions {
-                if !elevator
-                    .requests
-                    .request_at_floor(floor, direction)
-                    .is_empty()
-                {
-                    break;
-                }
-            }
+            let direction = match check_for_stop(elevator, direction) {
+                Ok(dir) => dir,
+                Err(_) => return Err(false),
+            };
 
+            elevator.state = State::Still(direction);
             elevator.timer = Some(Timer::from_secs(TIME_WAIT_ON_FLOOR));
+
             send::door_open_light(stream, true).log_if_err();
-            send::order_button_light(stream, button, floor, false).log_if_err();
+            send::order_button_light(stream, Button::Cab, elevator.floor, false).log_if_err();
             elevator
                 .requests
                 .update_active_button(Button::Cab, elevator.floor, true);
+
+            let msg = Message::HallButtonLight {
+                floor: elevator.floor,
+                direction,
+                on: false,
+            };
+            tx.send(msg).unwrap();
             return Ok(());
         }
     };
 
-    match send::motor_direction(stream, direction) {
-        Ok(_) => {
-            elevator.state = State::Moving(direction);
-            Ok(())
-        }
-        Err(e) => {
-            eprintln!("{e}");
-            Err(true)
-        }
+    if let Err(e) = send::motor_direction(stream, direction) {
+        eprintln!("{e}");
+        return Err(true);
     }
+
+    elevator.state = State::Moving(direction);
+    Ok(())
 }

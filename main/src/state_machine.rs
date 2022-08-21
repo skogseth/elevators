@@ -69,7 +69,7 @@ pub fn run(
         }
 
         if elevator.state == State::Idle {
-            handle::try_move(&mut stream, &mut elevator).err();
+            handle::try_move(&mut stream, &tx, &mut elevator).err();
         }
     }
 }
