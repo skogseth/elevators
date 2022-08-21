@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use interface::types::Button;
+use interface::types::{Button, Floor};
 
 use crate::error::ElevatorError;
 use crate::state_machine::types::State;
@@ -25,16 +25,12 @@ pub struct Timer {
 }
 
 impl Elevator {
-    pub fn new(floor: usize, n_floors: usize) -> Elevator {
-        let requests = Requests::new(n_floors);
-        let state = State::Idle;
-        let timer = None;
+    pub fn new(floor: Floor) -> Elevator {
         Elevator {
             floor,
-            n_floors,
-            requests,
-            state,
-            timer,
+            state: State::Idle,
+            requests: Requests::new(Floor::get_n_floors()),
+            timer: None,
         }
     }
 
@@ -45,10 +41,6 @@ impl Elevator {
             state,
             critical,
         }
-    }
-
-    pub fn get_n_floors(&self) -> usize {
-        self.n_floors
     }
 }
 

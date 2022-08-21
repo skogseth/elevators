@@ -4,6 +4,8 @@ use std::net::{SocketAddr, TcpStream};
 use std::sync::mpsc::{self, TryRecvError};
 use std::thread;
 
+use interface::types::Floor;
+
 mod error;
 mod state_machine;
 mod types;
@@ -26,6 +28,8 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     println!("Number of elevator: {n_elevators}");
     println!("Number of floors: {n_floors}");
 
+    Floor::initialize(n_floors);
+
     let mut threads = Vec::new();
     let (tx_thread, rx) = mpsc::channel();
 
@@ -40,7 +44,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
         let tx_thread = tx_thread.clone();
 
         let handle = thread::spawn(move || -> Result<(), ElevatorError> {
-            state_machine::run(i, stream, (tx_thread, rx_thread), n_floors)
+            state_machine::run(i, stream, (tx_thread, rx_thread))
         });
 
         threads.push(ThreadInfo::new(i, handle, tx));

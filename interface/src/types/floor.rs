@@ -2,7 +2,7 @@ use once_cell::sync::OnceCell;
 
 use crate::types::Floor;
 
-static MAX_FLOORS: OnceCell<usize> = OnceCell::new();
+pub static N_FLOORS: OnceCell<usize> = OnceCell::new();
 static ERROR_MESSAGE: &'static str =
     "Floor is uninitialized, run Floor::initialize(max_floor) first.";
 
@@ -10,13 +10,13 @@ impl Floor {
     pub fn new() -> Self {
         Floor {
             val: 0,
-            max: *MAX_FLOORS.get().expect(ERROR_MESSAGE),
+            max: *N_FLOORS.get().expect(ERROR_MESSAGE) - 1,
         }
     }
 
     pub fn from_value(val: usize) -> Option<Self> {
-        let max = *MAX_FLOORS.get().expect(ERROR_MESSAGE);
-        if val < max {
+        let max = *N_FLOORS.get().expect(ERROR_MESSAGE) - 1;
+        if val <= max {
             Some(Floor { val, max })
         } else {
             None
@@ -32,8 +32,24 @@ impl Floor {
         floor.ok_or(self.max)
     } 
 
-    pub fn initialize(max_floor: usize) {
-        MAX_FLOORS.set(max_floor).unwrap();
+    pub fn initialize(n_floors: usize) {
+        N_FLOORS.set(n_floors).unwrap();
+    }
+
+    pub fn get_n_floors() -> usize {
+        *N_FLOORS.get().expect(ERROR_MESSAGE)
+    }
+}
+
+impl From<usize> for Floor {
+    fn from(val: usize) -> Floor {
+        Floor::from_value(val).unwrap()
+    }
+}
+
+impl From<Floor> for usize {
+    fn from(val: Floor) -> usize {
+        val.get()
     }
 }
 
@@ -46,8 +62,8 @@ impl TryFrom<u8> for Floor {
 }
 
 impl From<Floor> for u8 {
-    fn from(floor: Floor) -> u8 {
-        floor.val as u8
+    fn from(val: Floor) -> u8 {
+        val.get() as u8
     }
 }
 

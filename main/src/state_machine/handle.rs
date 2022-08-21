@@ -3,11 +3,11 @@ use std::net::TcpStream;
 use std::sync::mpsc::Sender;
 
 use interface::send;
-use interface::types::{Button, Direction};
+use interface::types::{Button, Direction, Floor};
 
+use crate::error::Logger;
 use crate::types::elevator::Timer;
 use crate::types::{Elevator, Message};
-use crate::error::Logger;
 
 use super::types::State;
 
@@ -101,27 +101,27 @@ pub fn button_press(
     tx: &Sender<Message>,
     elevator: &mut Elevator,
     button: Button,
-    floor: usize,
+    floor: Floor,
 ) {
-    if button == Button::Cab {
-        elevator.requests.add_request(button, floor);
-        send::order_button_light(stream, button, floor, true).log_if_err();
-        elevator.requests.update_active_button(button, floor, false);
-    } else {
-        // Can safely unwrap direction since Button::Cab has been handled
-        let direction = Direction::try_from(button).unwrap();
+    match button {
+        Button::Cab => {
+            elevator.requests.add_request(button, floor);
+            send::order_button_light(stream, button, floor, true).log_if_err();
+            elevator.requests.update_active_button(button, floor, false);
+        }
+        Button::Hall(direction) => {
+            // Send request to main thread
+            let msg = Message::Request { floor, direction };
+            tx.send(msg).unwrap();
 
-        // Send request to main thread
-        let msg = Message::Request { floor, direction };
-        tx.send(msg).unwrap();
-
-        // Send hall button light message to main thread
-        let msg = Message::HallButtonLight {
-            floor,
-            direction,
-            on: true,
-        };
-        tx.send(msg).unwrap();
+            // Send hall button light message to main thread
+            let msg = Message::HallButtonLight {
+                floor,
+                direction,
+                on: true,
+            };
+            tx.send(msg).unwrap();
+        }
     }
 }
 
@@ -175,13 +175,14 @@ pub fn try_move(stream: &mut TcpStream, elevator: &mut Elevator) -> Result<(), C
         None => return Err(false),
     };
 
-    let direction = match elevator.floor.cmp(&floor) {
+    let direction = match usize::from(elevator.floor).cmp(&usize::from(floor)) {
         Ordering::Less => Direction::Up,
         Ordering::Greater => Direction::Down,
         Ordering::Equal => {
-            let directions = match Direction::try_from(button).ok() {
-                Some(direction) => vec![direction],
-                None => vec![Direction::Up, Direction::Down],
+            let directions = match button {
+                Button::Cab => vec![Direction::Up, Direction::Down],
+                Button::Hall(direction) => vec![direction],
+                
             };
 
             for direction in directions {

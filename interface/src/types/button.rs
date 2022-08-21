@@ -3,9 +3,9 @@ use crate::types::{Button, Direction};
 impl Button {
     pub fn iterator() -> impl Iterator<Item = Button> {
         [
+            Button::Cab,
             Button::Hall(Direction::Up),
             Button::Hall(Direction::Down),
-            Button::Cab,
         ]
         .iter()
         .copied()

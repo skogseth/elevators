@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use interface::types::{Button, Direction};
+use interface::types::{Button, Direction, Floor};
 
 use super::Requests;
 
@@ -64,23 +64,18 @@ impl Requests {
         self.map.get_mut(button).unwrap()
     }
 
-    pub fn add_request(&mut self, button: Button, floor: usize) {
-        self.get_mut(&button).set(true, floor);
+    pub fn add_request(&mut self, button: Button, floor: Floor) {
+        self.get_mut(&button).set(true, floor.into());
     }
 
-    pub fn request_at_floor(&mut self, current_floor: usize, direction: Direction) -> Vec<Button> {
+    pub fn request_at_floor(&mut self, current_floor: Floor, direction: Direction) -> Vec<Button> {
         let mut results = Vec::new();
-        let buttons = [
-            Button::Cab,
-            match direction {
-                Direction::Up => Button::HallUp,
-                Direction::Down => Button::HallDown,
-            },
-        ];
+        let buttons = [Button::Cab, Button::Hall(direction)];
+        let index = usize::from(current_floor);
 
         for button in buttons {
-            if self.get(&button).get(current_floor) {
-                self.get_mut(&button).set(false, current_floor);
+            if self.get(&button).get(index) {
+                self.get_mut(&button).set(false, index);
                 results.push(button);
             }
         }
@@ -88,13 +83,11 @@ impl Requests {
         results
     }
 
-    pub fn check_in_direction(&self, current_floor: usize, direction: Direction) -> bool {
-        let (floors, buttons) = match direction {
-            Direction::Up => (
-                (current_floor + 1)..self.n_floors,
-                [Button::Cab, Button::HallUp],
-            ),
-            Direction::Down => (0..current_floor, [Button::Cab, Button::HallDown]),
+    pub fn check_in_direction(&self, current_floor: Floor, direction: Direction) -> bool {
+        let buttons = [Button::Cab, Button::Hall(direction)];
+        let floors = match direction {
+            Direction::Up => (usize::from(current_floor) + 1)..self.n_floors,
+            Direction::Down => 0..usize::from(current_floor),
         };
 
         for button in buttons {
@@ -106,12 +99,11 @@ impl Requests {
         false
     }
 
-    pub fn check_for_any(&self) -> Option<(usize, Button)> {
-        let buttons = [Button::Cab, Button::HallUp, Button::HallDown];
-        for button in buttons {
+    pub fn check_for_any(&self) -> Option<(Floor, Button)> {
+        for button in Button::iterator() {
             for floor in 0..self.n_floors {
                 if self.get(&button).arr[floor] {
-                    return Some((floor, button));
+                    return Some((Floor::from(floor), button));
                 }
             }
         }
@@ -126,22 +118,22 @@ impl Requests {
         n_requests
     }
 
-    pub fn get_active_buttons(&self, button: Button) -> Vec<usize> {
+    pub fn get_active_buttons(&self, button: Button) -> Vec<Floor> {
         self.active_buttons
             .get(&button)
             .unwrap()
             .iter()
             .enumerate()
             .filter(|&x| *x.1 == true)
-            .map(|x| x.0)
-            .collect::<Vec<usize>>()
+            .map(|x| Floor::from(x.0))
+            .collect::<Vec<Floor>>()
     }
 
-    pub fn update_active_button(&mut self, button: Button, floor: usize, active: bool) {
+    pub fn update_active_button(&mut self, button: Button, floor: Floor, active: bool) {
         self.active_buttons
             .get_mut(&button)
             .unwrap()
-            .set(active, floor);
+            .set(active, floor.into());
     }
 }
 

@@ -1,8 +1,7 @@
-use std::cmp::Ordering;
 use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 
-use interface::types::Direction;
+use interface::types::{Direction, Floor};
 
 use crate::error::ElevatorError;
 use crate::state_machine::types::State;
@@ -18,23 +17,19 @@ impl ThreadInfo {
             id,
             handle,
             transmitter,
-            floor: 0,
+            floor: Floor::new(),
             state: State::Idle,
             n_requests: 0,
         }
     }
 
-    pub fn cost_function(&self, floor: usize, direction: Direction) -> usize {
+    pub fn cost_function(&self, floor: Floor, direction: Direction) -> usize {
         let in_direction = match self.state {
             State::Idle => true,
             State::Moving(dir) => direction == dir,
             State::Still(dir) => direction == dir,
         };
-        let floor_difference = match &floor.cmp(&self.floor) {
-            Ordering::Greater => floor - self.floor,
-            Ordering::Equal => 0,
-            Ordering::Less => self.floor - floor,
-        };
+        let floor_difference = usize::from(floor).abs_diff(usize::from(self.floor));
         Self::cost_function_helper(self.state, floor_difference, self.n_requests, in_direction)
     }
 

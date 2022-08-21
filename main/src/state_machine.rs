@@ -2,11 +2,11 @@ use std::net::TcpStream;
 use std::sync::mpsc::{Receiver, Sender};
 use std::{thread, time::Duration};
 
+use interface::types::{Button, Direction, Floor};
 use interface::{get, send};
-use interface::types::{Button, Direction};
 
-use crate::types::{Elevator, Message};
 use crate::error::{ElevatorError, Logger};
+use crate::types::{Elevator, Message};
 
 mod handle;
 pub mod types;
@@ -19,17 +19,19 @@ pub fn run(
     thread_id: usize,
     mut stream: TcpStream,
     (tx, rx): (Sender<Message>, Receiver<Message>),
-    n_floors: usize,
 ) -> Result<(), ElevatorError> {
     let start_floor = match start_floor(&mut stream) {
         Ok(start_floor) => start_floor,
         Err(_e) => {
             eprintln!("Could not start up elevator");
-            let elevator = Elevator::new(0, 0);
-            return Err(elevator.error(true));
+            return Err(ElevatorError {
+                floor: Floor::from(0),
+                state: State::Idle,
+                critical: true,
+            });
         }
     };
-    let mut elevator = Elevator::new(start_floor, n_floors);
+    let mut elevator = Elevator::new(start_floor);
 
     loop {
         let event = wait_for_event(thread_id, &mut stream, (&tx, &rx), &elevator);
@@ -44,7 +46,7 @@ pub fn run(
             }
             Event::MessageReceived(msg) => match msg {
                 Message::Request { floor, direction } => {
-                    let button = Button::from(direction);
+                    let button = Button::Hall(direction);
                     elevator.requests.add_request(button, floor);
                 }
                 Message::HallButtonLight {
@@ -52,7 +54,7 @@ pub fn run(
                     direction,
                     on,
                 } => {
-                    let button = Button::from(direction);
+                    let button = Button::Hall(direction);
                     send::order_button_light(&mut stream, button, floor, on).log_if_err();
                     elevator.requests.update_active_button(button, floor, !on);
                 }
@@ -143,7 +145,7 @@ fn wait_for_event(
     }
 }
 
-fn start_floor(stream: &mut TcpStream) -> Result<usize, std::io::Error> {
+fn start_floor(stream: &mut TcpStream) -> Result<Floor, std::io::Error> {
     if let Some(floor) = get::floor(stream)? {
         send::floor_indicator(stream, floor)?;
         return Ok(floor);

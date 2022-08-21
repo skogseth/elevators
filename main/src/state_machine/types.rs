@@ -1,11 +1,11 @@
-use interface::types::{Button, Direction};
+use interface::types::{Button, Direction, Floor};
 use crate::types::Message;
 
 pub enum Event {
-    ArriveAtFloor(usize),
+    ArriveAtFloor(Floor),
     TimerTimedOut,
     MessageReceived(Message),
-    ButtonPress(Button, usize),
+    ButtonPress(Button, Floor),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
