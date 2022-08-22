@@ -14,6 +14,10 @@ impl Direction {
             Direction::Down => Direction::Up,
         }
     }
+
+    pub fn iterator() -> impl Iterator<Item = Direction> {
+        [Direction::Up, Direction::Down].iter().copied()
+    }
 }
 
 impl From<Direction> for u8 {
