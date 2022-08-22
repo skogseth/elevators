@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::net::TcpStream;
 use std::sync::mpsc::Sender;
 
@@ -172,43 +171,26 @@ pub fn try_move(
     tx: &Sender<Message>,
     elevator: &mut Elevator,
 ) -> Result<(), Critical> {
-    let (floor, button) = match elevator.requests.check_for_any() {
-        Some(tuple) => tuple,
-        None => return Err(false),
-    };
+    if let Ok(direction) = check_for_stop(elevator, Direction::Up) {
+        elevator.state = State::Still(direction);
+        elevator.timer = Some(Timer::from_secs(TIME_WAIT_ON_FLOOR));
 
-    let direction = match usize::from(elevator.floor).cmp(&usize::from(floor)) {
-        Ordering::Less => Direction::Up,
-        Ordering::Greater => Direction::Down,
-        Ordering::Equal => {
-            let direction = match button {
-                Button::Cab => Direction::Up,
-                Button::Hall(direction) => direction,
-            };
+        send::door_open_light(stream, true).log_if_err();
+        send::order_button_light(stream, Button::Cab, elevator.floor, false).log_if_err();
+        elevator
+            .requests
+            .update_active_button(Button::Cab, elevator.floor, true);
 
-            let direction = match check_for_stop(elevator, direction) {
-                Ok(dir) => dir,
-                Err(_) => return Err(false),
-            };
+        let msg = Message::HallButtonLight {
+            floor: elevator.floor,
+            direction,
+            on: false,
+        };
+        tx.send(msg).unwrap();
+        return Ok(());
+    }
 
-            elevator.state = State::Still(direction);
-            elevator.timer = Some(Timer::from_secs(TIME_WAIT_ON_FLOOR));
-
-            send::door_open_light(stream, true).log_if_err();
-            send::order_button_light(stream, Button::Cab, elevator.floor, false).log_if_err();
-            elevator
-                .requests
-                .update_active_button(Button::Cab, elevator.floor, true);
-
-            let msg = Message::HallButtonLight {
-                floor: elevator.floor,
-                direction,
-                on: false,
-            };
-            tx.send(msg).unwrap();
-            return Ok(());
-        }
-    };
+    let direction = check_in_both_directions(&elevator)?;
 
     if let Err(e) = send::motor_direction(stream, direction) {
         eprintln!("{e}");
@@ -217,4 +199,16 @@ pub fn try_move(
 
     elevator.state = State::Moving(direction);
     Ok(())
+}
+
+fn check_in_both_directions(elevator: &Elevator) -> Result<Direction, Critical> {
+    for direction in Direction::iterator() {
+        if elevator
+            .requests
+            .check_in_direction(elevator.floor, direction)
+        {
+            return Ok(direction);
+        }
+    }
+    Err(false)
 }
