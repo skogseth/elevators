@@ -4,15 +4,19 @@ use std::sync::mpsc::Sender;
 use interface::send;
 use interface::types::{Button, Direction, Floor};
 
-use crate::error::Logger;
+use crate::error::{Logger, ElevatorError};
 use crate::types::elevator::Timer;
 use crate::types::{Elevator, Message};
 
 use super::types::State;
 
+type Critical = bool;
+
 const TIME_WAIT_ON_FLOOR: u64 = 3; // in seconds
 
-pub fn arrive_at_floor(stream: &mut TcpStream, tx: &Sender<Message>, elevator: &mut Elevator) {
+pub fn arrive_at_floor(stream: &mut TcpStream, tx: &Sender<Message>, elevator: &mut Elevator, floor: Floor) {
+    elevator.floor = floor;
+
     send::floor_indicator(stream, elevator.floor).log_if_err();
 
     let direction = match elevator.state {
@@ -34,21 +38,95 @@ pub fn arrive_at_floor(stream: &mut TcpStream, tx: &Sender<Message>, elevator: &
         return;
     }
 
-    elevator.state = State::Still(direction);
-    elevator.timer = Some(Timer::from_secs(TIME_WAIT_ON_FLOOR));
+    wait_at_floor(stream, tx, elevator, direction);
+}
 
-    send::door_open_light(stream, true).log_if_err();
-    send::order_button_light(stream, Button::Cab, elevator.floor, false).log_if_err();
-    elevator
-        .requests
-        .update_active_button(Button::Cab, elevator.floor, true);
+pub fn message_received(stream: &mut TcpStream, elevator: &mut Elevator, msg: Message) -> Result<(), ElevatorError> {
+    match msg {
+        Message::Request { floor, direction } => {
+            let button = Button::Hall(direction);
+            elevator.requests.add_request(button, floor);
+        }
+        Message::HallButtonLight {
+            floor,
+            direction,
+            on,
+        } => {
+            let button = Button::Hall(direction);
+            send::order_button_light(stream, button, floor, on).log_if_err();
+            elevator.requests.update_active_button(button, floor, !on);
+        }
+        Message::ElevatorInfo { .. } => {
+            eprintln!("Main thread sent elevator info...");
+        }
+        Message::Shutdown => return Err(elevator.error(false)),
+    }
 
-    let msg = Message::HallButtonLight {
-        floor: elevator.floor,
-        direction,
-        on: false,
+    Ok(())
+}
+
+pub fn button_press(
+    stream: &mut TcpStream,
+    tx: &Sender<Message>,
+    elevator: &mut Elevator,
+    button: Button,
+    floor: Floor,
+) {
+    match button {
+        Button::Cab => {
+            elevator.requests.add_request(button, floor);
+            send::order_button_light(stream, button, floor, true).log_if_err();
+            elevator.requests.update_active_button(button, floor, false);
+        }
+        Button::Hall(direction) => {
+            // Send request to main thread
+            let msg = Message::Request { floor, direction };
+            tx.send(msg).unwrap();
+
+            // Send hall button light message to main thread
+            let msg = Message::HallButtonLight {
+                floor,
+                direction,
+                on: true,
+            };
+            tx.send(msg).unwrap();
+        }
+    }
+}
+
+pub fn timer_timed_out(stream: &mut TcpStream, elevator: &mut Elevator) {
+    elevator.timer = None;
+
+    send::door_open_light(stream, false).log_if_err();
+
+    if let State::Still(direction) = elevator.state {
+        if let Err(_) = try_continue(stream, elevator, direction) {
+            elevator.state = State::Idle;
+        };
+    } else {
+        eprintln!("Timer timed out, but state was not still");
+    }
+}
+
+pub fn try_move(
+    stream: &mut TcpStream,
+    tx: &Sender<Message>,
+    elevator: &mut Elevator,
+) -> Result<(), Critical> {
+    if let Ok(direction) = check_for_stop(elevator, Direction::Up) {
+        wait_at_floor(stream, tx, elevator, direction);
+        return Ok(());
+    }
+
+    let direction = check_in_both_directions(&elevator).map_err(|_| false)?;
+
+    if let Err(e) = send::motor_direction(stream, direction) {
+        eprintln!("{e}");
+        return Err(true);
     };
-    tx.send(msg).unwrap();
+
+    elevator.state = State::Moving(direction);
+    Ok(())
 }
 
 // Checks for stop at current floor of elevator, with a prioritized direction
@@ -96,50 +174,40 @@ fn check_for_stop(elevator: &mut Elevator, direction: Direction) -> Result<Direc
     result
 }
 
-pub fn button_press(
+fn check_in_both_directions(elevator: &Elevator) -> Result<Direction, ()> {
+    for direction in Direction::iterator() {
+        if elevator
+            .requests
+            .check_in_direction(elevator.floor, direction)
+        {
+            return Ok(direction);
+        }
+    }
+    Err(())
+}
+
+fn wait_at_floor(
     stream: &mut TcpStream,
     tx: &Sender<Message>,
     elevator: &mut Elevator,
-    button: Button,
-    floor: Floor,
+    direction: Direction,
 ) {
-    match button {
-        Button::Cab => {
-            elevator.requests.add_request(button, floor);
-            send::order_button_light(stream, button, floor, true).log_if_err();
-            elevator.requests.update_active_button(button, floor, false);
-        }
-        Button::Hall(direction) => {
-            // Send request to main thread
-            let msg = Message::Request { floor, direction };
-            tx.send(msg).unwrap();
+    elevator.state = State::Still(direction);
+    elevator.timer = Some(Timer::from_secs(TIME_WAIT_ON_FLOOR));
 
-            // Send hall button light message to main thread
-            let msg = Message::HallButtonLight {
-                floor,
-                direction,
-                on: true,
-            };
-            tx.send(msg).unwrap();
-        }
-    }
+    send::door_open_light(stream, true).log_if_err();
+    send::order_button_light(stream, Button::Cab, elevator.floor, false).log_if_err();
+    elevator
+        .requests
+        .update_active_button(Button::Cab, elevator.floor, true);
+
+    let msg = Message::HallButtonLight {
+        floor: elevator.floor,
+        direction,
+        on: false,
+    };
+    tx.send(msg).unwrap();
 }
-
-pub fn timer_timed_out(stream: &mut TcpStream, elevator: &mut Elevator) {
-    elevator.timer = None;
-
-    send::door_open_light(stream, false).log_if_err();
-
-    if let State::Still(direction) = elevator.state {
-        if let Err(_) = try_continue(stream, elevator, direction) {
-            elevator.state = State::Idle;
-        };
-    } else {
-        eprintln!("Timer timed out, but state was not still");
-    }
-}
-
-type Critical = bool;
 
 fn try_continue(
     stream: &mut TcpStream,
@@ -164,51 +232,4 @@ fn try_continue(
 
     elevator.state = State::Moving(direction);
     return Ok(());
-}
-
-pub fn try_move(
-    stream: &mut TcpStream,
-    tx: &Sender<Message>,
-    elevator: &mut Elevator,
-) -> Result<(), Critical> {
-    if let Ok(direction) = check_for_stop(elevator, Direction::Up) {
-        elevator.state = State::Still(direction);
-        elevator.timer = Some(Timer::from_secs(TIME_WAIT_ON_FLOOR));
-
-        send::door_open_light(stream, true).log_if_err();
-        send::order_button_light(stream, Button::Cab, elevator.floor, false).log_if_err();
-        elevator
-            .requests
-            .update_active_button(Button::Cab, elevator.floor, true);
-
-        let msg = Message::HallButtonLight {
-            floor: elevator.floor,
-            direction,
-            on: false,
-        };
-        tx.send(msg).unwrap();
-        return Ok(());
-    }
-
-    let direction = check_in_both_directions(&elevator)?;
-
-    if let Err(e) = send::motor_direction(stream, direction) {
-        eprintln!("{e}");
-        return Err(true);
-    }
-
-    elevator.state = State::Moving(direction);
-    Ok(())
-}
-
-fn check_in_both_directions(elevator: &Elevator) -> Result<Direction, Critical> {
-    for direction in Direction::iterator() {
-        if elevator
-            .requests
-            .check_in_direction(elevator.floor, direction)
-        {
-            return Ok(direction);
-        }
-    }
-    Err(false)
 }

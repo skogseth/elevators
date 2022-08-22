@@ -5,7 +5,7 @@ use std::{thread, time::Duration};
 use interface::types::{Button, Direction, Floor};
 use interface::{get, send};
 
-use crate::error::{ElevatorError, Logger};
+use crate::error::ElevatorError;
 use crate::types::{Elevator, Message};
 
 mod handle;
@@ -20,17 +20,14 @@ pub fn run(
     mut stream: TcpStream,
     (tx, rx): (Sender<Message>, Receiver<Message>),
 ) -> Result<(), ElevatorError> {
-    let start_floor = match start_floor(&mut stream) {
-        Ok(start_floor) => start_floor,
-        Err(_e) => {
-            eprintln!("Could not start up elevator");
-            return Err(ElevatorError {
-                floor: Floor::from(0),
-                state: State::Idle,
-                critical: true,
-            });
+    let start_floor = initialize(&mut stream).map_err(|e| {
+        eprintln!("Could not start up elevator: {e}");
+        ElevatorError {
+            floor: Floor::from(0),
+            state: State::Idle,
+            critical: true,
         }
-    };
+    })?;
     let mut elevator = Elevator::new(start_floor);
 
     loop {
@@ -38,31 +35,14 @@ pub fn run(
 
         match event {
             Event::ArriveAtFloor(floor) => {
-                elevator.floor = floor;
-                handle::arrive_at_floor(&mut stream, &tx, &mut elevator);
+                handle::arrive_at_floor(&mut stream, &tx, &mut elevator, floor);
             }
             Event::TimerTimedOut => {
                 handle::timer_timed_out(&mut stream, &mut elevator);
             }
-            Event::MessageReceived(msg) => match msg {
-                Message::Request { floor, direction } => {
-                    let button = Button::Hall(direction);
-                    elevator.requests.add_request(button, floor);
-                }
-                Message::HallButtonLight {
-                    floor,
-                    direction,
-                    on,
-                } => {
-                    let button = Button::Hall(direction);
-                    send::order_button_light(&mut stream, button, floor, on).log_if_err();
-                    elevator.requests.update_active_button(button, floor, !on);
-                }
-                Message::ElevatorInfo { .. } => {
-                    eprintln!("Main thread sent elevator info");
-                }
-                Message::Shutdown => return Ok(()),
-            },
+            Event::MessageReceived(msg) => {
+                handle::message_received(&mut stream, &mut elevator, msg)?;
+            }
             Event::ButtonPress(button, floor) => {
                 handle::button_press(&mut stream, &tx, &mut elevator, button, floor);
             }
@@ -145,7 +125,7 @@ fn wait_for_event(
     }
 }
 
-fn start_floor(stream: &mut TcpStream) -> Result<Floor, std::io::Error> {
+fn initialize(stream: &mut TcpStream) -> Result<Floor, std::io::Error> {
     if let Some(floor) = get::floor(stream)? {
         send::floor_indicator(stream, floor)?;
         return Ok(floor);
