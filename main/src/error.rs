@@ -1,8 +1,9 @@
-use crate::elevator::state::State;
+use interface::types::Floor;
+use crate::state_machine::types::State;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ElevatorError {
-    pub floor: usize,
+    pub floor: Floor,
     pub state: State,
     pub critical: bool,
 }

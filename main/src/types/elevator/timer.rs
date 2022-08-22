@@ -1,10 +1,6 @@
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Copy, Clone)]
-pub struct Timer {
-    now: Instant,
-    duration: Duration,
-}
+use super::Timer;
 
 impl Timer {
     pub fn from_secs(secs: u64) -> Timer {

@@ -2,7 +2,7 @@ use std::io::prelude::*;
 use std::io::{Error, ErrorKind, Result};
 use std::net::TcpStream;
 
-use crate::elevator::event::button::Button;
+use crate::types::{Button, Floor};
 
 fn get_data(stream: &mut TcpStream, buffer: &mut [u8; 4]) -> Result<()> {
     stream.write(buffer)?;
@@ -11,8 +11,8 @@ fn get_data(stream: &mut TcpStream, buffer: &mut [u8; 4]) -> Result<()> {
     Ok(())
 }
 
-pub fn order_button(stream: &mut TcpStream, button: Button, floor: usize) -> Result<bool> {
-    let mut buffer: [u8; 4] = [6, button as u8, floor as u8, 0];
+pub fn order_button(stream: &mut TcpStream, button: Button, floor: Floor) -> Result<bool> {
+    let mut buffer: [u8; 4] = [6, u8::from(button), u8::from(floor), 0];
     get_data(stream, &mut buffer)?;
 
     if buffer[0] != 6 {
@@ -28,7 +28,7 @@ pub fn order_button(stream: &mut TcpStream, button: Button, floor: usize) -> Res
     Ok(pressed)
 }
 
-pub fn floor(stream: &mut TcpStream) -> Result<Option<usize>> {
+pub fn floor(stream: &mut TcpStream) -> Result<Option<Floor>> {
     let mut buffer: [u8; 4] = [7, 0, 0, 0];
     get_data(stream, &mut buffer)?;
 
@@ -38,7 +38,7 @@ pub fn floor(stream: &mut TcpStream) -> Result<Option<usize>> {
 
     let floor = match buffer[1] {
         0 => None,
-        1 => Some(buffer[2] as usize),
+        1 => Floor::from_value(buffer[2] as usize),
         _ => return Err(Error::new(ErrorKind::InvalidData, "incorrect feedback for buffer[1] in floor()")),
     };
 

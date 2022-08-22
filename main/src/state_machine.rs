@@ -2,15 +2,16 @@ use std::net::TcpStream;
 use std::sync::mpsc::{Receiver, Sender};
 use std::{thread, time::Duration};
 
-mod handle;
+use interface::types::{Button, Direction, Floor};
+use interface::{get, send};
 
-use crate::elevator::event::{button::Button, Event};
-use crate::elevator::state::direction::Direction;
-use crate::elevator::state::State;
-use crate::elevator::Elevator;
-use crate::error::{ElevatorError, Logger};
-use crate::message::Message;
-use crate::network::{get, send};
+use crate::error::ElevatorError;
+use crate::types::{Elevator, Message};
+
+mod handle;
+pub mod types;
+
+use self::types::{Event, State};
 
 const TIME_BETWEEN_EVENT_CHECKS: u64 = 5; // in milliseconds
 
@@ -18,55 +19,37 @@ pub fn run(
     thread_id: usize,
     mut stream: TcpStream,
     (tx, rx): (Sender<Message>, Receiver<Message>),
-    n_floors: usize,
 ) -> Result<(), ElevatorError> {
-    let start_floor = match start_floor(&mut stream) {
-        Ok(start_floor) => start_floor,
-        Err(_e) => {
-            eprintln!("Could not start up elevator");
-            let elevator = Elevator::new(0, 0);
-            return Err(elevator.error(true));
+    let start_floor = initialize(&mut stream).map_err(|e| {
+        eprintln!("Could not start up elevator: {e}");
+        ElevatorError {
+            floor: Floor::from(0),
+            state: State::Idle,
+            critical: true,
         }
-    };
-    let mut elevator = Elevator::new(start_floor, n_floors);
+    })?;
+    let mut elevator = Elevator::new(start_floor);
 
     loop {
         let event = wait_for_event(thread_id, &mut stream, (&tx, &rx), &elevator);
 
         match event {
             Event::ArriveAtFloor(floor) => {
-                elevator.floor = floor;
-                handle::arrive_at_floor(&mut stream, &tx, &mut elevator);
+                handle::arrive_at_floor(&mut stream, &tx, &mut elevator, floor);
             }
             Event::TimerTimedOut => {
                 handle::timer_timed_out(&mut stream, &mut elevator);
             }
-            Event::MessageReceived(msg) => match msg {
-                Message::Request { floor, direction } => {
-                    let button = Button::from(direction);
-                    elevator.requests.add_request(button, floor);
-                }
-                Message::HallButtonLight {
-                    floor,
-                    direction,
-                    on,
-                } => {
-                    let button = Button::from(direction);
-                    send::order_button_light(&mut stream, button, floor, on).log_if_err();
-                    elevator.requests.update_active_button(button, floor, !on);
-                }
-                Message::ElevatorInfo { .. } => {
-                    eprintln!("Main thread sent elevator info");
-                }
-                Message::Shutdown => return Ok(()),
-            },
+            Event::MessageReceived(msg) => {
+                handle::message_received(&mut stream, &mut elevator, msg)?;
+            }
             Event::ButtonPress(button, floor) => {
                 handle::button_press(&mut stream, &tx, &mut elevator, button, floor);
             }
         }
 
         if elevator.state == State::Idle {
-            handle::try_move(&mut stream, &mut elevator).err();
+            handle::try_move(&mut stream, &tx, &mut elevator).err();
         }
     }
 }
@@ -124,7 +107,10 @@ fn wait_for_event(
             for floor in floors {
                 if let Ok(pressed) = get::order_button(stream, button, floor) {
                     if pressed {
-                        println!("Thread {thread_id}: Button {:?} was pressed at floor {:?}", button, floor);
+                        println!(
+                            "Thread {thread_id}: Button {:?} was pressed at floor {:?}",
+                            button, floor
+                        );
                         return Event::ButtonPress(button, floor);
                     }
                 } else {
@@ -139,7 +125,7 @@ fn wait_for_event(
     }
 }
 
-fn start_floor(stream: &mut TcpStream) -> Result<usize, std::io::Error> {
+fn initialize(stream: &mut TcpStream) -> Result<Floor, std::io::Error> {
     if let Some(floor) = get::floor(stream)? {
         send::floor_indicator(stream, floor)?;
         return Ok(floor);

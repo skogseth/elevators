@@ -1,10 +1,4 @@
-use crate::elevator::event::button::Button;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Direction {
-    Up = 1,
-    Down = -1,
-}
+use crate::types::Direction;
 
 impl Direction {
     fn to_str(&self) -> &str {
@@ -20,16 +14,17 @@ impl Direction {
             Direction::Down => Direction::Up,
         }
     }
+
+    pub fn iterator() -> impl Iterator<Item = Direction> {
+        [Direction::Up, Direction::Down].iter().copied()
+    }
 }
 
-impl TryFrom<Button> for Direction {
-    type Error = &'static str;
-
-    fn try_from(button: Button) -> Result<Self, Self::Error> {
-        match button {
-            Button::HallUp => Ok(Direction::Up),
-            Button::HallDown => Ok(Direction::Down),
-            Button::Cab => Err("Button::Cab has no direction"),
+impl From<Direction> for u8 {
+    fn from(val: Direction) -> u8 {
+        match val {
+            Direction::Up => 1,
+            Direction::Down => 255, // = -1
         }
     }
 }

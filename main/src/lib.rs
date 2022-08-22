@@ -1,79 +1,21 @@
 #![allow(dead_code)]
-use std::cmp::Ordering;
 use std::error::Error;
 use std::net::{SocketAddr, TcpStream};
-use std::sync::mpsc::{self, Sender, TryRecvError};
-use std::thread::{self, JoinHandle};
+use std::sync::mpsc::{self, TryRecvError};
+use std::thread;
 
-mod elevator;
+use interface::types::Floor;
+
 mod error;
-mod message;
-mod network;
 mod state_machine;
+mod types;
 
-use elevator::state::direction::Direction;
-
-use crate::elevator::state::State;
 use crate::error::ElevatorError;
-use crate::message::Message;
+use crate::types::{Message, ThreadInfo};
 
 pub struct Config {
     pub n_elevators: usize,
     pub n_floors: usize,
-}
-
-struct ThreadInfo {
-    id: usize,
-    handle: JoinHandle<Result<(), ElevatorError>>,
-    transmitter: Sender<Message>,
-    floor: usize,
-    state: State,
-    n_requests: usize,
-}
-
-impl ThreadInfo {
-    fn new(
-        id: usize,
-        handle: JoinHandle<Result<(), ElevatorError>>,
-        transmitter: Sender<Message>,
-    ) -> Self {
-        ThreadInfo {
-            id,
-            handle,
-            transmitter,
-            floor: 0,
-            state: State::Idle,
-            n_requests: 0,
-        }
-    }
-
-    fn cost_function(&self, floor: usize, direction: Direction) -> usize {
-        let in_direction = match self.state {
-            State::Idle => true,
-            State::Moving(dir) => direction == dir,
-            State::Still(dir) => direction == dir,
-        };
-        let floor_difference = match &floor.cmp(&self.floor) {
-            Ordering::Greater => floor - self.floor,
-            Ordering::Equal => 0,
-            Ordering::Less => self.floor - floor,
-        };
-        Self::cost_function_helper(self.state, floor_difference, self.n_requests, in_direction)
-    }
-
-    fn cost_function_helper(
-        state: State,
-        floor_difference: usize,
-        n_requests: usize,
-        in_direction: bool,
-    ) -> usize {
-        let state_value = match state {
-            State::Idle => 0,
-            State::Moving(..) => 1,
-            State::Still(..) => 3,
-        };
-        state_value + (floor_difference) + 2 * (n_requests) + (!in_direction as usize)
-    }
 }
 
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
@@ -85,6 +27,8 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     } = config;
     println!("Number of elevator: {n_elevators}");
     println!("Number of floors: {n_floors}");
+
+    Floor::initialize(n_floors);
 
     let mut threads = Vec::new();
     let (tx_thread, rx) = mpsc::channel();
@@ -100,7 +44,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
         let tx_thread = tx_thread.clone();
 
         let handle = thread::spawn(move || -> Result<(), ElevatorError> {
-            state_machine::run(i, stream, (tx_thread, rx_thread), n_floors)
+            state_machine::run(i, stream, (tx_thread, rx_thread))
         });
 
         threads.push(ThreadInfo::new(i, handle, tx));
@@ -128,7 +72,6 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
         match rx.try_recv() {
             Ok(msg) => match msg {
                 Message::Request { floor, direction } => {
-                    // TODO: Implement algorithm to find best elevator
                     let mut tx = &threads[0].transmitter;
                     let mut min_cost = std::usize::MAX;
                     for thread in threads.iter() {

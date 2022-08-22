@@ -1,6 +1,12 @@
-pub mod direction;
+use interface::types::{Button, Direction, Floor};
+use crate::types::Message;
 
-use self::direction::Direction;
+pub enum Event {
+    ArriveAtFloor(Floor),
+    TimerTimedOut,
+    MessageReceived(Message),
+    ButtonPress(Button, Floor),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
@@ -19,3 +25,6 @@ impl std::fmt::Display for State {
         write!(f, "{s}")
     }
 }
+
+
+

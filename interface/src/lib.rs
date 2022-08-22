@@ -1,5 +1,6 @@
 pub mod get;
 pub mod send;
+pub mod types;
 
 #[cfg(test)]
 mod tests {
