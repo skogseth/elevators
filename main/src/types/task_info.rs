@@ -20,13 +20,14 @@ impl TaskInfo {
     }
 
     pub fn cost_function(&self, floor: Floor, direction: Direction) -> usize {
-        let in_direction = match self.state {
+        let _in_direction = match self.state {
             State::Idle => true,
             State::Moving(dir) => direction == dir,
             State::Still(dir) => direction == dir,
         };
         let floor_difference = usize::from(floor).abs_diff(usize::from(self.floor));
-        Self::cost_function_helper(self.state, floor_difference, self.n_requests, in_direction)
+        //Self::cost_function_helper(self.state, floor_difference, self.n_requests, in_direction)
+        floor_difference
     }
 
     fn cost_function_helper(
@@ -40,7 +41,6 @@ impl TaskInfo {
             State::Moving(..) => 1,
             State::Still(..) => 3,
         };
-        //state_value + (floor_difference) + 2 * (n_requests) + (!in_direction as usize)
-        floor_difference
+        state_value + (floor_difference) + 2 * (n_requests) + (!in_direction as usize)
     }
 }
