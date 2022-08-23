@@ -1,6 +1,7 @@
-use std::net::TcpStream;
-use std::sync::mpsc::{Receiver, Sender};
-use std::{thread, time::Duration};
+use tokio::sync::mpsc::{Receiver, Sender};
+use std::time::Duration;
+use tokio::time::sleep;
+use tokio::net::TcpStream;
 
 use interface::types::{Button, Direction, Floor};
 use interface::{get, send};
@@ -13,14 +14,14 @@ pub mod types;
 
 use self::types::{Event, State};
 
-const TIME_BETWEEN_EVENT_CHECKS: u64 = 5; // in milliseconds
+const TIME_BETWEEN_EVENT_CHECKS: u64 = 10; // in milliseconds
 
-pub fn run(
-    thread_id: usize,
+pub async fn run(
+    task_id: usize,
     mut stream: TcpStream,
-    (tx, rx): (Sender<Message>, Receiver<Message>),
+    (tx, mut rx): (Sender<Message>, Receiver<Message>),
 ) -> Result<(), ElevatorError> {
-    let start_floor = initialize(&mut stream).map_err(|e| {
+    let start_floor = initialize(&mut stream).await.map_err(|e| {
         eprintln!("Could not start up elevator: {e}");
         ElevatorError {
             floor: Floor::from(0),
@@ -31,54 +32,56 @@ pub fn run(
     let mut elevator = Elevator::new(start_floor);
 
     loop {
-        let event = wait_for_event(thread_id, &mut stream, (&tx, &rx), &elevator);
+        let event = wait_for_event(task_id, &mut stream, (&tx, &mut rx), &elevator).await;
 
         match event {
             Event::ArriveAtFloor(floor) => {
-                handle::arrive_at_floor(&mut stream, &tx, &mut elevator, floor);
+                handle::arrive_at_floor(&mut stream, &tx, &mut elevator, floor).await;
             }
             Event::TimerTimedOut => {
-                handle::timer_timed_out(&mut stream, &mut elevator);
+                handle::timer_timed_out(&mut stream, &tx, &mut elevator).await;
             }
             Event::MessageReceived(msg) => {
-                handle::message_received(&mut stream, &mut elevator, msg)?;
+                handle::message_received(&mut stream, &mut elevator, msg).await?;
             }
             Event::ButtonPress(button, floor) => {
-                handle::button_press(&mut stream, &tx, &mut elevator, button, floor);
+                handle::button_press(&mut stream, &tx, &mut elevator, button, floor).await;
             }
         }
 
         if elevator.state == State::Idle {
-            handle::try_move(&mut stream, &tx, &mut elevator).err();
+            handle::try_move(&mut stream, &tx, &mut elevator)
+                .await
+                .err();
         }
     }
 }
 
-fn wait_for_event(
-    thread_id: usize,
+async fn wait_for_event(
+    task_id: usize,
     stream: &mut TcpStream,
-    (tx, rx): (&Sender<Message>, &Receiver<Message>),
+    (tx, rx): (&Sender<Message>, &mut Receiver<Message>),
     elevator: &Elevator,
 ) -> Event {
     println!(
-        "Thread {thread_id}: Waiting for event... (State::{:?}))",
+        "Task {task_id}: Waiting for event... (State::{:?}))",
         elevator.state
     );
 
     let msg = Message::ElevatorInfo {
-        thread_id,
+        task_id,
         floor: elevator.floor,
         state: elevator.state,
         n_requests: elevator.requests.number_of_requests(),
     };
-    tx.send(msg).unwrap();
+    tx.send(msg).await.unwrap();
 
     loop {
         // CHECK FOR FLOOR ARRIVAL
-        if let Ok(opt_floor) = get::floor(stream) {
+        if let Ok(opt_floor) = get::floor(stream).await {
             if let Some(floor) = opt_floor {
                 if floor != elevator.floor {
-                    println!("Thread {thread_id}: Arrival at floor {floor}");
+                    println!("task {task_id}: Arrival at floor {floor}");
                     return Event::ArriveAtFloor(floor);
                 }
             }
@@ -89,14 +92,14 @@ fn wait_for_event(
         // CHECK FOR TIMER
         if let Some(timer) = elevator.timer {
             if timer.is_done() {
-                eprintln!("Thread {thread_id}: Timer finished");
+                eprintln!("task {task_id}: Timer finished");
                 return Event::TimerTimedOut;
             }
         }
 
         // CHECK FOR MESSAGES
         if let Ok(msg) = rx.try_recv() {
-            eprintln!("Thread {thread_id}: Message received: {:?}", msg);
+            eprintln!("task {task_id}: Message received: {:?}", msg);
             return Event::MessageReceived(msg);
         }
 
@@ -105,36 +108,36 @@ fn wait_for_event(
             let floors = elevator.requests.get_active_buttons(button);
 
             for floor in floors {
-                if let Ok(pressed) = get::order_button(stream, button, floor) {
+                if let Ok(pressed) = get::order_button(stream, button, floor).await {
                     if pressed {
                         println!(
-                            "Thread {thread_id}: Button {:?} was pressed at floor {:?}",
+                            "task {task_id}: Button {:?} was pressed at floor {}",
                             button, floor
                         );
                         return Event::ButtonPress(button, floor);
                     }
                 } else {
-                    let identifier = format!("floor {floor:?} & button {button:?}");
+                    let identifier = format!("floor {floor} & button {button:?}");
                     eprintln!("caught error in get::order_button() for {identifier}");
                 }
             }
         }
 
         // If no events are found, wait a tiny amount of time before checking for new requests
-        thread::sleep(Duration::from_millis(TIME_BETWEEN_EVENT_CHECKS));
+        sleep(Duration::from_millis(TIME_BETWEEN_EVENT_CHECKS)).await;
     }
 }
 
-fn initialize(stream: &mut TcpStream) -> Result<Floor, std::io::Error> {
-    if let Some(floor) = get::floor(stream)? {
-        send::floor_indicator(stream, floor)?;
+async fn initialize(stream: &mut TcpStream) -> Result<Floor, std::io::Error> {
+    if let Some(floor) = get::floor(stream).await? {
+        send::floor_indicator(stream, floor).await?;
         return Ok(floor);
     }
-    send::motor_direction(stream, Direction::Down)?;
+    send::motor_direction(stream, Direction::Down).await?;
     loop {
-        if let Some(floor) = get::floor(stream)? {
-            send::stop(stream)?;
-            send::floor_indicator(stream, floor)?;
+        if let Some(floor) = get::floor(stream).await? {
+            send::stop(stream).await?;
+            send::floor_indicator(stream, floor).await?;
             return Ok(floor);
         }
     }

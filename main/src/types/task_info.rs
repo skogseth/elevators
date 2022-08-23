@@ -1,21 +1,17 @@
-use std::sync::mpsc::Sender;
-use std::thread::JoinHandle;
+use tokio::sync::mpsc::Sender;
 
 use interface::types::{Direction, Floor};
 
-use crate::error::ElevatorError;
 use crate::state_machine::types::State;
-use crate::types::{Message, ThreadInfo};
+use crate::types::{Message, TaskInfo};
 
-impl ThreadInfo {
+impl TaskInfo {
     pub fn new(
         id: usize,
-        handle: JoinHandle<Result<(), ElevatorError>>,
         transmitter: Sender<Message>,
     ) -> Self {
-        ThreadInfo {
+        TaskInfo {
             id,
-            handle,
             transmitter,
             floor: Floor::new(),
             state: State::Idle,
@@ -44,6 +40,7 @@ impl ThreadInfo {
             State::Moving(..) => 1,
             State::Still(..) => 3,
         };
-        state_value + (floor_difference) + 2 * (n_requests) + (!in_direction as usize)
+        //state_value + (floor_difference) + 2 * (n_requests) + (!in_direction as usize)
+        floor_difference
     }
 }
