@@ -1,5 +1,7 @@
-use tokio::sync::mpsc::Sender;
+use std::time::Duration;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::Sender;
+use tokio::time::sleep;
 
 use interface::send;
 use interface::types::{Button, Direction, Floor};
@@ -109,7 +111,11 @@ pub async fn button_press(
     }
 }
 
-pub async fn timer_timed_out(stream: &mut TcpStream, tx: &Sender<Message>, elevator: &mut Elevator) {
+pub async fn timer_timed_out(
+    stream: &mut TcpStream,
+    tx: &Sender<Message>,
+    elevator: &mut Elevator,
+) {
     elevator.timer = None;
 
     send::door_open_light(stream, false).await.log_if_err();
@@ -223,6 +229,9 @@ async fn wait_at_floor(
 ) {
     elevator.state = State::Still(direction);
     elevator.timer = Some(Timer::from_secs(TIME_WAIT_ON_FLOOR));
+
+    // wait for a short duration to give the button lights some time to shine, literally
+    sleep(Duration::from_millis(50)).await;
 
     send::door_open_light(stream, true).await.log_if_err();
     send::order_button_light(stream, Button::Cab, elevator.floor, false)
