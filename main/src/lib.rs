@@ -3,7 +3,6 @@ use std::error::Error;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::TryRecvError;
 
 use interface::types::Floor;
 
@@ -55,56 +54,43 @@ pub async fn run(config: Config) -> Result<(), Box<dyn Error>> {
         tasks.push(TaskInfo::new(i, tx));
     }
 
-    loop {
-        // CHECK IF ALL ELEVATORS ARE DOWN
-        if tasks.is_empty() {
-            break;
-        }
-
-        // TALK WITH ELEVATOR taskS
-        match rx.try_recv() {
-            Ok(msg) => match msg {
-                Message::Request { floor, direction } => {
-                    let mut tx = &tasks[0].transmitter;
-                    let mut min_cost = std::usize::MAX;
-                    for task in tasks.iter() {
-                        let cost = task.cost_function(floor, direction);
-                        if cost < min_cost {
-                            tx = &task.transmitter;
-                            min_cost = cost;
-                        }
-                    }
-                    tx.send(msg).await.unwrap();
-                }
-                Message::HallButtonLight { .. } => {
-                    // Send message to all elevators for hall button light
-                    for task in tasks.iter() {
-                        task.transmitter.send(msg).await.unwrap();
+    while let Some(msg) = rx.recv().await {
+        match msg {
+            Message::Request { floor, direction } => {
+                let mut tx = &tasks[0].transmitter;
+                let mut min_cost = std::usize::MAX;
+                for task in tasks.iter() {
+                    let cost = task.cost_function(floor, direction);
+                    if cost < min_cost {
+                        tx = &task.transmitter;
+                        min_cost = cost;
                     }
                 }
-                Message::ElevatorInfo {
-                    task_id,
-                    floor,
-                    state,
-                    n_requests,
-                } => {
-                    for task in tasks.iter_mut() {
-                        if task.id == task_id {
-                            task.floor = floor;
-                            task.state = state;
-                            task.n_requests = n_requests;
-                            break;
-                        }
+                tx.send(msg).await.unwrap();
+            }
+            Message::HallButtonLight { .. } => {
+                // Send message to all elevators for hall button light
+                for task in tasks.iter() {
+                    task.transmitter.send(msg).await.unwrap();
+                }
+            }
+            Message::ElevatorInfo {
+                task_id,
+                floor,
+                state,
+                n_requests,
+            } => {
+                for task in tasks.iter_mut() {
+                    if task.id == task_id {
+                        task.floor = floor;
+                        task.state = state;
+                        task.n_requests = n_requests;
+                        break;
                     }
                 }
-                Message::Shutdown => {
-                    eprint!("Received shutdown message from task");
-                }
-            },
-            Err(e) => {
-                if e == TryRecvError::Disconnected {
-                    break;
-                }
+            }
+            Message::Shutdown => {
+                eprint!("Received shutdown message from task");
             }
         }
     }
