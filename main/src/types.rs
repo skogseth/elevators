@@ -1,13 +1,11 @@
-use std::thread::JoinHandle;
-use std::sync::mpsc::Sender;
+use tokio::sync::mpsc::Sender;
 
 use interface::types::{Direction, Floor};
 
 use crate::state_machine::types::State;
-use crate::error::ElevatorError;
 
 pub mod elevator;
-pub mod thread_info;
+pub mod task_info;
 
 use self::elevator::{Requests, Timer};
 
@@ -30,7 +28,7 @@ pub enum Message {
         on: bool,
     },
     ElevatorInfo {
-        thread_id: usize,
+        task_id: usize,
         floor: Floor,
         state: State,
         n_requests: usize,
@@ -38,9 +36,8 @@ pub enum Message {
     Shutdown,
 }
 
-pub struct ThreadInfo {
+pub struct TaskInfo {
     pub id: usize,
-    pub handle: JoinHandle<Result<(), ElevatorError>>,
     pub transmitter: Sender<Message>,
     pub floor: Floor,
     pub state: State,

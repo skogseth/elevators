@@ -1,10 +1,12 @@
-use std::net::TcpStream;
-use std::sync::mpsc::Sender;
+use std::time::Duration;
+use tokio::net::TcpStream;
+use tokio::sync::mpsc::Sender;
+use tokio::time::sleep;
 
 use interface::send;
 use interface::types::{Button, Direction, Floor};
 
-use crate::error::{Logger, ElevatorError};
+use crate::error::{ElevatorError, Logger};
 use crate::types::elevator::Timer;
 use crate::types::{Elevator, Message};
 
@@ -14,10 +16,17 @@ type Critical = bool;
 
 const TIME_WAIT_ON_FLOOR: u64 = 3; // in seconds
 
-pub fn arrive_at_floor(stream: &mut TcpStream, tx: &Sender<Message>, elevator: &mut Elevator, floor: Floor) {
+pub async fn arrive_at_floor(
+    stream: &mut TcpStream,
+    tx: &Sender<Message>,
+    elevator: &mut Elevator,
+    floor: Floor,
+) {
     elevator.floor = floor;
 
-    send::floor_indicator(stream, elevator.floor).log_if_err();
+    send::floor_indicator(stream, elevator.floor)
+        .await
+        .log_if_err();
 
     let direction = match elevator.state {
         State::Moving(dir) => dir,
@@ -33,15 +42,19 @@ pub fn arrive_at_floor(stream: &mut TcpStream, tx: &Sender<Message>, elevator: &
         Err(_) => return,
     };
 
-    if let Err(_) = send::stop(stream) {
+    if let Err(_) = send::stop(stream).await {
         eprintln!("Failed to stop at floor {:?}", elevator.floor);
         return;
     }
 
-    wait_at_floor(stream, tx, elevator, direction);
+    wait_at_floor(stream, tx, elevator, direction).await;
 }
 
-pub fn message_received(stream: &mut TcpStream, elevator: &mut Elevator, msg: Message) -> Result<(), ElevatorError> {
+pub async fn message_received(
+    stream: &mut TcpStream,
+    elevator: &mut Elevator,
+    msg: Message,
+) -> Result<(), ElevatorError> {
     match msg {
         Message::Request { floor, direction } => {
             let button = Button::Hall(direction);
@@ -53,7 +66,9 @@ pub fn message_received(stream: &mut TcpStream, elevator: &mut Elevator, msg: Me
             on,
         } => {
             let button = Button::Hall(direction);
-            send::order_button_light(stream, button, floor, on).log_if_err();
+            send::order_button_light(stream, button, floor, on)
+                .await
+                .log_if_err();
             elevator.requests.update_active_button(button, floor, !on);
         }
         Message::ElevatorInfo { .. } => {
@@ -65,7 +80,7 @@ pub fn message_received(stream: &mut TcpStream, elevator: &mut Elevator, msg: Me
     Ok(())
 }
 
-pub fn button_press(
+pub async fn button_press(
     stream: &mut TcpStream,
     tx: &Sender<Message>,
     elevator: &mut Elevator,
@@ -75,32 +90,43 @@ pub fn button_press(
     match button {
         Button::Cab => {
             elevator.requests.add_request(button, floor);
-            send::order_button_light(stream, button, floor, true).log_if_err();
+            send::order_button_light(stream, button, floor, true)
+                .await
+                .log_if_err();
             elevator.requests.update_active_button(button, floor, false);
         }
         Button::Hall(direction) => {
-            // Send request to main thread
-            let msg = Message::Request { floor, direction };
-            tx.send(msg).unwrap();
-
             // Send hall button light message to main thread
             let msg = Message::HallButtonLight {
                 floor,
                 direction,
                 on: true,
             };
-            tx.send(msg).unwrap();
+            tx.send(msg).await.unwrap();
+
+            // Send request to main thread
+            let msg = Message::Request { floor, direction };
+            tx.send(msg).await.unwrap();
         }
     }
 }
 
-pub fn timer_timed_out(stream: &mut TcpStream, elevator: &mut Elevator) {
+pub async fn timer_timed_out(
+    stream: &mut TcpStream,
+    tx: &Sender<Message>,
+    elevator: &mut Elevator,
+) {
     elevator.timer = None;
 
-    send::door_open_light(stream, false).log_if_err();
+    send::door_open_light(stream, false).await.log_if_err();
 
     if let State::Still(direction) = elevator.state {
-        if let Err(_) = try_continue(stream, elevator, direction) {
+        if let Ok(direction) = check_for_stop(elevator, direction) {
+            wait_at_floor(stream, tx, elevator, direction).await;
+            return;
+        }
+
+        if let Err(_) = try_continue(stream, elevator, direction).await {
             elevator.state = State::Idle;
         };
     } else {
@@ -108,22 +134,31 @@ pub fn timer_timed_out(stream: &mut TcpStream, elevator: &mut Elevator) {
     }
 }
 
-pub fn try_move(
+pub async fn try_move(
     stream: &mut TcpStream,
     tx: &Sender<Message>,
     elevator: &mut Elevator,
 ) -> Result<(), Critical> {
-    if let Ok(direction) = check_for_stop(elevator, Direction::Up) {
-        wait_at_floor(stream, tx, elevator, direction);
-        return Ok(());
+    println!("Trying to move");
+
+    for direction in Direction::iterator() {
+        if let Ok(direction) = check_for_stop(elevator, direction) {
+            println!("Found request at current floor, direction: {direction}");
+            wait_at_floor(stream, tx, elevator, direction).await;
+            return Ok(());
+        }
     }
 
     let direction = check_in_both_directions(&elevator).map_err(|_| false)?;
 
-    if let Err(e) = send::motor_direction(stream, direction) {
+    println!("Request found in direction: {direction}");
+
+    if let Err(e) = send::motor_direction(stream, direction).await {
         eprintln!("{e}");
         return Err(true);
     };
+
+    println!("Succesfully sent motor direction: {direction}");
 
     elevator.state = State::Moving(direction);
     Ok(())
@@ -186,7 +221,7 @@ fn check_in_both_directions(elevator: &Elevator) -> Result<Direction, ()> {
     Err(())
 }
 
-fn wait_at_floor(
+async fn wait_at_floor(
     stream: &mut TcpStream,
     tx: &Sender<Message>,
     elevator: &mut Elevator,
@@ -195,8 +230,13 @@ fn wait_at_floor(
     elevator.state = State::Still(direction);
     elevator.timer = Some(Timer::from_secs(TIME_WAIT_ON_FLOOR));
 
-    send::door_open_light(stream, true).log_if_err();
-    send::order_button_light(stream, Button::Cab, elevator.floor, false).log_if_err();
+    // wait for a short duration to give the button lights some time to shine, literally
+    sleep(Duration::from_millis(50)).await;
+
+    send::door_open_light(stream, true).await.log_if_err();
+    send::order_button_light(stream, Button::Cab, elevator.floor, false)
+        .await
+        .log_if_err();
     elevator
         .requests
         .update_active_button(Button::Cab, elevator.floor, true);
@@ -206,10 +246,10 @@ fn wait_at_floor(
         direction,
         on: false,
     };
-    tx.send(msg).unwrap();
+    tx.send(msg).await.unwrap();
 }
 
-fn try_continue(
+async fn try_continue(
     stream: &mut TcpStream,
     elevator: &mut Elevator,
     direction: Direction,
@@ -222,7 +262,7 @@ fn try_continue(
         return Err(false);
     }
 
-    if let Err(_) = send::motor_direction(stream, direction) {
+    if let Err(_) = send::motor_direction(stream, direction).await {
         eprintln!(
             "failed to move in direction {:?} from {:?}",
             direction, elevator.floor

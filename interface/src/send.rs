@@ -1,45 +1,50 @@
-use std::io::prelude::*;
-use std::net::TcpStream;
+use std::io::Result;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 
 use crate::types::{Button, Direction, Floor};
 
-fn send_data(stream: &mut TcpStream, buffer: &[u8; 4]) -> std::io::Result<()> {
-    stream.write(buffer)?;
+async fn send_data(stream: &mut TcpStream, buffer: &[u8; 4]) -> Result<()> {
+    stream.write_all(buffer).await?;
     Ok(())
 }
 
-pub fn reload_config(stream: &mut TcpStream) -> std::io::Result<()> {
+pub async fn reload_config(stream: &mut TcpStream) -> Result<()> {
     let buffer: [u8; 4] = [0, 0, 0, 0];
-    send_data(stream, &buffer)
+    send_data(stream, &buffer).await
 }
 
-pub fn motor_direction(stream: &mut TcpStream, direction: Direction) -> std::io::Result<()> {
+pub async fn motor_direction(stream: &mut TcpStream, direction: Direction) -> Result<()> {
     let buffer: [u8; 4] = [1, u8::from(direction), 0, 0];
-    send_data(stream, &buffer)
+    send_data(stream, &buffer).await
 }
 
-pub fn stop(stream: &mut TcpStream) -> std::io::Result<()> {
+pub async fn stop(stream: &mut TcpStream) -> Result<()> {
     let buffer: [u8; 4] = [1, 0, 0, 0];
-    send_data(stream, &buffer)
+    send_data(stream, &buffer).await
 }
 
-pub fn order_button_light(stream: &mut TcpStream, button: Button, floor: Floor, on: bool) -> std::io::Result<()> {
-    let value = if on { 1 } else { 0 };
-    let buffer: [u8; 4] = [2, u8::from(button), u8::from(floor), value];
-    send_data(stream, &buffer)
+pub async fn order_button_light(
+    stream: &mut TcpStream,
+    button: Button,
+    floor: Floor,
+    on: bool,
+) -> Result<()> {
+    let buffer: [u8; 4] = [2, u8::from(button), u8::from(floor), u8::from(on)];
+    send_data(stream, &buffer).await
 }
 
-pub fn floor_indicator(stream: &mut TcpStream, floor: Floor) -> std::io::Result<()> {
+pub async fn floor_indicator(stream: &mut TcpStream, floor: Floor) -> Result<()> {
     let buffer: [u8; 4] = [3, u8::from(floor), 0, 0];
-    send_data(stream, &buffer)
+    send_data(stream, &buffer).await
 }
 
-pub fn door_open_light(stream: &mut TcpStream, on: bool) -> std::io::Result<()> {
+pub async fn door_open_light(stream: &mut TcpStream, on: bool) -> Result<()> {
     let buffer: [u8; 4] = [4, u8::from(on), 0, 0];
-    send_data(stream, &buffer)
+    send_data(stream, &buffer).await
 }
 
-pub fn stop_button_light(stream: &mut TcpStream, on: bool) -> std::io::Result<()> {
+pub async fn stop_button_light(stream: &mut TcpStream, on: bool) -> Result<()> {
     let buffer: [u8; 4] = [5, u8::from(on), 0, 0];
-    send_data(stream, &buffer)
+    send_data(stream, &buffer).await
 }

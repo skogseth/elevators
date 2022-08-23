@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 use std::error::Error;
-use std::net::{SocketAddr, TcpStream};
-use std::sync::mpsc::{self, TryRecvError};
-use std::thread;
+use std::net::SocketAddr;
+use tokio::net::TcpStream;
+use tokio::sync::mpsc;
 
 use interface::types::Floor;
 
@@ -10,15 +10,14 @@ mod error;
 mod state_machine;
 mod types;
 
-use crate::error::ElevatorError;
-use crate::types::{Message, ThreadInfo};
+use crate::types::{Message, TaskInfo};
 
 pub struct Config {
     pub n_elevators: usize,
     pub n_floors: usize,
 }
 
-pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+pub async fn run(config: Config) -> Result<(), Box<dyn Error>> {
     println!("Executing run function");
 
     let Config {
@@ -30,90 +29,71 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
     Floor::initialize(n_floors);
 
-    let mut threads = Vec::new();
-    let (tx_thread, rx) = mpsc::channel();
+    let mut tasks = Vec::new();
+    let mut handles = Vec::new();
+
+    let (tx_task, mut rx) = mpsc::channel(100);
 
     const HOST: [u8; 4] = [127, 0, 0, 1];
     const BASE_PORT: u16 = 10000;
 
     for i in 0..n_elevators {
         let addr = SocketAddr::from((HOST, BASE_PORT + i as u16));
-        let stream = TcpStream::connect(addr)?;
-        println!("Thread {i} connected to {addr}");
-        let (tx, rx_thread) = mpsc::channel();
-        let tx_thread = tx_thread.clone();
+        let stream = TcpStream::connect(addr).await?;
+        println!("task {i} connected to {addr}");
+        let (tx, rx_task) = mpsc::channel(100);
+        let tx_task = tx_task.clone();
 
-        let handle = thread::spawn(move || -> Result<(), ElevatorError> {
-            state_machine::run(i, stream, (tx_thread, rx_thread))
+        let handle = tokio::spawn(async move {
+            if let Err(_) = state_machine::run(i, stream, (tx_task, rx_task)).await {
+                println!("Error occured in state machine");
+            }
         });
 
-        threads.push(ThreadInfo::new(i, handle, tx));
+        handles.push(handle);
+        tasks.push(TaskInfo::new(i, tx));
     }
 
-    loop {
-        // CHECK FOR ELEVATOR CRASHES
-        for i in 0..threads.len() {
-            if threads[i].handle.is_finished() {
-                let thread = threads.remove(i);
-                thread
-                    .handle
-                    .join()
-                    .expect("Thread panicked, caught by main!")
-                    .expect("Elevator crashed");
+    while let Some(msg) = rx.recv().await {
+        match msg {
+            Message::Request { floor, direction } => {
+                let tx = &tasks
+                    .iter()
+                    .min_by_key(|x| x.cost_function(floor, direction))
+                    .unwrap()
+                    .transmitter;
+                tx.send(msg).await.unwrap();
             }
-        }
-
-        // CHECK IF ALL ELEVATORS ARE DOWN
-        if threads.is_empty() {
-            break;
-        }
-
-        // TALK WITH ELEVATOR THREADS
-        match rx.try_recv() {
-            Ok(msg) => match msg {
-                Message::Request { floor, direction } => {
-                    let mut tx = &threads[0].transmitter;
-                    let mut min_cost = std::usize::MAX;
-                    for thread in threads.iter() {
-                        let cost = thread.cost_function(floor, direction);
-                        if cost < min_cost {
-                            tx = &thread.transmitter;
-                            min_cost = cost;
-                        }
-                    }
-                    tx.send(msg).unwrap();
-                }
-                Message::HallButtonLight { .. } => {
-                    // Send message to all elevators for hall button light
-                    for thread in threads.iter() {
-                        thread.transmitter.send(msg).unwrap();
-                    }
-                }
-                Message::ElevatorInfo {
-                    thread_id,
-                    floor,
-                    state,
-                    n_requests,
-                } => {
-                    for thread in threads.iter_mut() {
-                        if thread.id == thread_id {
-                            thread.floor = floor;
-                            thread.state = state;
-                            thread.n_requests = n_requests;
-                            break;
-                        }
-                    }
-                }
-                Message::Shutdown => {
-                    eprint!("Received shutdown message from thread");
-                }
-            },
-            Err(e) => {
-                if e == TryRecvError::Disconnected {
-                    break;
+            Message::HallButtonLight { .. } => {
+                // Send message to all elevators for hall button light
+                for task in tasks.iter() {
+                    task.transmitter.send(msg).await.unwrap();
                 }
             }
+            Message::ElevatorInfo {
+                task_id,
+                floor,
+                state,
+                n_requests,
+            } => {
+                for task in tasks.iter_mut() {
+                    if task.id == task_id {
+                        task.floor = floor;
+                        task.state = state;
+                        task.n_requests = n_requests;
+                        break;
+                    }
+                }
+            }
+            Message::Shutdown => {
+                eprint!("Received shutdown message from task");
+            }
         }
+    }
+
+    // CHECK FOR ELEVATOR CRASHES
+    for handle in handles {
+        handle.await.expect("Task panicked, caught by main!")
     }
 
     Ok(())
