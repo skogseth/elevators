@@ -57,15 +57,11 @@ pub async fn run(config: Config) -> Result<(), Box<dyn Error>> {
     while let Some(msg) = rx.recv().await {
         match msg {
             Message::Request { floor, direction } => {
-                let mut tx = &tasks[0].transmitter;
-                let mut min_cost = std::usize::MAX;
-                for task in tasks.iter() {
-                    let cost = task.cost_function(floor, direction);
-                    if cost < min_cost {
-                        tx = &task.transmitter;
-                        min_cost = cost;
-                    }
-                }
+                let tx = &tasks
+                    .iter()
+                    .min_by_key(|x| x.cost_function(floor, direction))
+                    .unwrap()
+                    .transmitter;
                 tx.send(msg).await.unwrap();
             }
             Message::HallButtonLight { .. } => {
