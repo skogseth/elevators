@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 
 use interface::types::{Button, Floor};
 
-use crate::error::ElevatorError;
 use crate::state_machine::types::State;
 
 pub mod requests;
@@ -31,15 +30,6 @@ impl Elevator {
             state: State::Idle,
             requests: Requests::new(Floor::get_n_floors()),
             timer: None,
-        }
-    }
-
-    pub fn error(&self, critical: bool) -> ElevatorError {
-        let (floor, state) = (self.floor, self.state);
-        ElevatorError {
-            floor,
-            state,
-            critical,
         }
     }
 }
