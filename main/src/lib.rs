@@ -93,7 +93,7 @@ pub async fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
     // CHECK FOR ELEVATOR CRASHES
     for handle in handles {
-        handle.await.expect("Task panicked, caught by main!")
+        handle.await.expect("Task panicked, caught by main!");
     }
 
     Ok(())

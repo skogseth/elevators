@@ -1,12 +1,12 @@
-use tokio::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
-use tokio::time::sleep;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::time::sleep;
 
 use interface::types::{Button, Direction, Floor};
 use interface::{get, send};
 
-use crate::error::ElevatorError;
+use crate::error::Error;
 use crate::types::{Elevator, Message};
 
 mod handle;
@@ -20,19 +20,37 @@ pub async fn run(
     task_id: usize,
     mut stream: TcpStream,
     (tx, mut rx): (Sender<Message>, Receiver<Message>),
-) -> Result<(), ElevatorError> {
-    let start_floor = initialize(&mut stream).await.map_err(|e| {
-        eprintln!("Could not start up elevator: {e}");
-        ElevatorError {
-            floor: Floor::from(0),
-            state: State::Idle,
-            critical: true,
-        }
-    })?;
+) -> Result<(), Error> {
+    let start_floor = initialize(&mut stream).await.map_err(|e| Error::StartUp(e))?;
     let mut elevator = Elevator::new(start_floor);
 
     loop {
-        let event = wait_for_event(task_id, &mut stream, (&tx, &mut rx), &elevator).await;
+        // Send elevatorinfo to main task
+        let msg = Message::ElevatorInfo {
+            task_id,
+            floor: elevator.floor,
+            state: elevator.state,
+            n_requests: elevator.requests.number_of_requests(),
+        };
+        tx.send(msg).await.unwrap();
+
+        // Wait for event
+        let event = tokio::select! {
+            result = elevator_event(task_id, &mut stream, &elevator) => { 
+                match result {
+                    Ok(event) => event,
+                    Err(e) => {
+                        println!("Error in elevator_event(): {e}");
+                        continue;
+                    }
+                }
+            }
+            option = rx.recv() => {
+                let msg = option.ok_or(Error::ChannelShutdown)?;
+                eprintln!("Task {task_id}: Message received: {:?}", msg);
+                Event::MessageReceived(msg)
+            }
+        };
 
         match event {
             Event::ArriveAtFloor(floor) => {
@@ -57,68 +75,43 @@ pub async fn run(
     }
 }
 
-async fn wait_for_event(
+async fn elevator_event(
     task_id: usize,
     stream: &mut TcpStream,
-    (tx, rx): (&Sender<Message>, &mut Receiver<Message>),
     elevator: &Elevator,
-) -> Event {
+) -> Result<Event, std::io::Error> {
     println!(
         "Task {task_id}: Waiting for event... (State::{:?}))",
         elevator.state
     );
 
-    let msg = Message::ElevatorInfo {
-        task_id,
-        floor: elevator.floor,
-        state: elevator.state,
-        n_requests: elevator.requests.number_of_requests(),
-    };
-    tx.send(msg).await.unwrap();
-
     loop {
         // CHECK FOR FLOOR ARRIVAL
-        if let Ok(opt_floor) = get::floor(stream).await {
-            if let Some(floor) = opt_floor {
+        if let State::Moving(_) = elevator.state {
+            if let Some(floor) = get::floor(stream).await? {
                 if floor != elevator.floor {
                     println!("task {task_id}: Arrival at floor {floor}");
-                    return Event::ArriveAtFloor(floor);
+                    return Ok(Event::ArriveAtFloor(floor));
                 }
             }
-        } else {
-            eprintln!("caught error in get::floor()!");
         }
 
         // CHECK FOR TIMER
         if let Some(timer) = elevator.timer {
             if timer.is_done() {
                 eprintln!("task {task_id}: Timer finished");
-                return Event::TimerTimedOut;
+                return Ok(Event::TimerTimedOut);
             }
-        }
-
-        // CHECK FOR MESSAGES
-        if let Ok(msg) = rx.try_recv() {
-            eprintln!("task {task_id}: Message received: {:?}", msg);
-            return Event::MessageReceived(msg);
         }
 
         // CHECK FOR BUTTON PRESS
         for button in Button::iterator() {
-            let floors = elevator.requests.get_active_buttons(button);
-
-            for floor in floors {
-                if let Ok(pressed) = get::order_button(stream, button, floor).await {
-                    if pressed {
-                        println!(
-                            "task {task_id}: Button {:?} was pressed at floor {}",
-                            button, floor
-                        );
-                        return Event::ButtonPress(button, floor);
-                    }
-                } else {
-                    let identifier = format!("floor {floor} & button {button:?}");
-                    eprintln!("caught error in get::order_button() for {identifier}");
+            for floor in elevator.requests.get_active_buttons(button) {
+                if get::order_button(stream, button, floor).await? {
+                    println!(
+                        "Task {task_id}: Button {button:?} pressed at floor {floor}"
+                    );
+                    return Ok(Event::ButtonPress(button, floor));
                 }
             }
         }

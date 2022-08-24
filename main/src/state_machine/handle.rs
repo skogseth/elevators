@@ -6,7 +6,7 @@ use tokio::time::sleep;
 use interface::send;
 use interface::types::{Button, Direction, Floor};
 
-use crate::error::{ElevatorError, Logger};
+use crate::error::{Error, Logger};
 use crate::types::elevator::Timer;
 use crate::types::{Elevator, Message};
 
@@ -54,7 +54,7 @@ pub async fn message_received(
     stream: &mut TcpStream,
     elevator: &mut Elevator,
     msg: Message,
-) -> Result<(), ElevatorError> {
+) -> Result<(), Error> {
     match msg {
         Message::Request { floor, direction } => {
             let button = Button::Hall(direction);
@@ -74,7 +74,7 @@ pub async fn message_received(
         Message::ElevatorInfo { .. } => {
             eprintln!("Main thread sent elevator info...");
         }
-        Message::Shutdown => return Err(elevator.error(false)),
+        Message::Shutdown => return Err(Error::GracefulShutdown),
     }
 
     Ok(())
